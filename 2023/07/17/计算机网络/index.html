@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha256-HtsXJanqjKTc8vVQjO4YMhiqFoXkfBsjBWcX91T1jr8=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"example.com","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.17.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="前言 计算机网络是一个很大和很复杂的模块，本文只能说是看书的一些笔记。主要是记录下tcp的连接，http，https的一些处理。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="计算机网络">
+<meta property="og:url" content="http://example.com/2023/07/17/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/index.html">
+<meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
+<meta property="og:description" content="前言 计算机网络是一个很大和很复杂的模块，本文只能说是看书的一些笔记。主要是记录下tcp的连接，http，https的一些处理。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://image.mingyouxiaozhu.top/blog/original-seven-layers-of-osi-model-1627523878-JYjV8oybcC.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/computer-network-PDU.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/computer-network-how-data-is-processed-in-OSI-and-TCPIP-models.jpg">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/2843224-361d5d314474ac75.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/Connection_TCP.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/20200917214413232.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230718154652278.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/Deconnection_TCP.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230718173153847.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230718182144373.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230718154652278.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230718182429255.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230718185642594.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230718190841582.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/457860-746cbfdfb80d8077.jpg">
+<meta property="article:published_time" content="2023-07-17T01:53:16.000Z">
+<meta property="article:modified_time" content="2023-07-19T02:01:14.198Z">
+<meta property="article:author" content="mingyouxiaozhu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://image.mingyouxiaozhu.top/blog/original-seven-layers-of-osi-model-1627523878-JYjV8oybcC.png">
+
+
+<link rel="canonical" href="http://example.com/2023/07/17/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/07/17/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/","path":"2023/07/17/计算机网络/","title":"计算机网络"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>计算机网络 | mingyouxiaozhu's blog</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">mingyouxiaozhu's blog</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#OSI-%E4%B8%83%E5%B1%82%E6%A8%A1%E5%9E%8B-%E5%92%8C-TCP%E5%9B%9B%E5%B1%82%E6%A8%A1%E5%9E%8B"><span class="nav-number">2.</span> <span class="nav-text">OSI 七层模型 和 TCP四层模型</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#TCP-x2F-IP"><span class="nav-number">3.</span> <span class="nav-text">TCP&#x2F;IP</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BB%8E%E5%9F%9F%E5%90%8D%E5%88%B0mac"><span class="nav-number">3.0.1.</span> <span class="nav-text">从域名到mac</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#TCP-%E5%92%8CUDP"><span class="nav-number">3.0.2.</span> <span class="nav-text">TCP 和UDP</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#TCP"><span class="nav-number">3.0.2.0.1.</span> <span class="nav-text">TCP</span></a><ol class="nav-child"><li class="nav-item nav-level-6"><a class="nav-link" href="#%E5%88%9B%E5%BB%BA%E8%BF%9E%E6%8E%A5"><span class="nav-number">3.0.2.0.1.1.</span> <span class="nav-text">创建连接</span></a></li><li class="nav-item nav-level-6"><a class="nav-link" href="#%E4%BC%A0%E9%80%81%E6%95%B0%E6%8D%AE"><span class="nav-number">3.0.2.0.1.2.</span> <span class="nav-text">传送数据</span></a></li><li class="nav-item nav-level-6"><a class="nav-link" href="#%E5%85%B3%E9%97%AD%E8%BF%9E%E6%8E%A5"><span class="nav-number">3.0.2.0.1.3.</span> <span class="nav-text">关闭连接</span></a></li></ol></li><li class="nav-item nav-level-5"><a class="nav-link" href="#UDP"><span class="nav-number">3.0.2.0.2.</span> <span class="nav-text">UDP</span></a></li></ol></li></ol></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#HTTP-%E5%92%8CHTTPS"><span class="nav-number">4.</span> <span class="nav-text">HTTP 和HTTPS</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#HTTTP"><span class="nav-number">4.0.1.</span> <span class="nav-text">HTTTP</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#HTTPS"><span class="nav-number">4.0.2.</span> <span class="nav-text">HTTPS</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">5.</span> <span class="nav-text">总结</span></a></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">mingyouxiaozhu</p>
+  <div class="site-description" itemprop="description">enjoy life ,enjoy coding</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/07/17/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="计算机网络 | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          计算机网络
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2023-07-17 09:53:16" itemprop="dateCreated datePublished" datetime="2023-07-17T09:53:16+08:00">2023-07-17</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-07-19 10:01:14" itemprop="dateModified" datetime="2023-07-19T10:01:14+08:00">2023-07-19</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p> 计算机网络是一个很大和很复杂的模块，本文只能说是看书的一些笔记。主要是记录下tcp的连接，http，https的一些处理。</p>
+<span id="more"></span>
+
+<h1 id="OSI-七层模型-和-TCP四层模型"><a href="#OSI-七层模型-和-TCP四层模型" class="headerlink" title="OSI 七层模型 和 TCP四层模型"></a>OSI 七层模型 和 TCP四层模型</h1><p> <img src="https://image.mingyouxiaozhu.top/blog/original-seven-layers-of-osi-model-1627523878-JYjV8oybcC.png" alt="七层模型"></p>
+<p> 上图是OSI七层模型我<a target="_blank" rel="noopener" href="https://community.fs.com/blog/tcpip-vs-osi-whats-the-difference-between-the-two-models.html">找到</a>做的很漂亮的一个图。OSI 将计算机网络中涉及很多方面做了一个分层。因为网络连接中，涉及到应用代码，网卡，路由器，交换器等。如果使用相同的方式去处理所有的节点上的数据传送，那么相对的，可能路由器都需要知道自己当前发送的是图片还是视频还是文字。这其实是不能接受的，而且扩展起来牵一发动全身。为了将网络中的软硬件分开进行处理，就对网络各个层级进行了一部分抽象，让每一层只做自己关注的点。当然还有TCP&#x2F;IP 的四层模型和5层模型，4层模型就是将OSI的七层模型的最上面3层合并为1层（application），5层模型则是在4层的基础上新增了物理层在追底层。<img src="http://image.mingyouxiaozhu.top/blog/computer-network-PDU.png" alt="computer-network-PDU"></p>
+<p> 上图是每一层数据的数据协议单元 ，也就是最小传送单位。比如到了网络层，会将数据切分成一个个package，而到了数据链路层会将数据在切分成单个的frame，在往下就是一个个bit，也就是光信号或者电信号。可以看出来，对数据做了一个重新的裁剪和和封装。裁剪的原因主要是因为从上层应用传来的数据太大，比如数据链路层是按照帧传送，他是将上文提到的可能出现的光信号或者电信号进行一个封装，也可以对一些列的bit进行一个快速的查错检测，控制等。如果将应用层的数据直接通过网络链路层发送，那么一次性发送的数据量太大，可能中间某个bit除了问题，还需要从头到尾找到出错的节点甚至进行全部重传。也就是说，下一层可能只是上一层数据的部分数据。那么上下两层是如何处理数据的呢？答案就是header<br><img src="http://image.mingyouxiaozhu.top/blog/computer-network-how-data-is-processed-in-OSI-and-TCPIP-models.jpg" alt="computer-network-how-data-is-processed-in-OSI-and-TCPIP-models"><br> 当数据到达对应的层级，会将上层数据进行处理，这个处理包含了判断大小，比如一次https，如果https的数据量特别大，那么在tcp层可能按照MTU进行一个拆分，将大数据量拆分成单个小数据量，还有需要进行SSL 加密。将数据进行加密和拆分后，会将数据传递给网络层，在网络层，IP协议会将每个TCP的数据（header+data）作为本层的data数据，然后加上IP的协议。继续往下传送。当数据被传送到客户端的时候，会从底层一步步将数据重新组合起来，每一层根据header进行处理，将数据恢复到上一次可以解析的数据，最终展示和客户端。</p>
+<p>可以看到，分层进行处理，会减少协议改动造成的修改工作，仅仅只需要修改对应的层级就可以了。</p>
+<h1 id="TCP-x2F-IP"><a href="#TCP-x2F-IP" class="headerlink" title="TCP&#x2F;IP"></a>TCP&#x2F;IP</h1><h3 id="从域名到mac"><a href="#从域名到mac" class="headerlink" title="从域名到mac"></a>从域名到mac</h3><p>​		现在的互联网其实某种意义上算的上是一个巨大的局域网，只不过是指的地球这个范围的局域。每个服务提供者后面可能都是一个甚至多个局域网里面各种各样的服务组成的。那么如何找到每个网络在哪里呢？当我们在网页上输入某个网址的时候，首先是这个网址去dns里找到对应的ip，因为域名其实主要是为了让服务更加人性化，在计算机的眼中是没有域名的概念的，标识符是mac地址，mac地址是全球唯一的，这个是出场的时候在网卡供应商就决定好了。mac地址有48位，如果说需要每个人记住每个服务的准确mac地址，那么互联网肯定也没有现如今这么普遍性。但是如果说让每个路由器都记住所有的mac地址，那么也是极为恐怖的数据量。而且前面有说，互联网其实是个巨大的局域网，具有一定的地域属性，于是在域名上增加了不同的地域信息，如com这个域有自己的DNS服务器。一般情况下，域名对应的ip地址是不会做很大的变化的，所以层层缓存，进一步减少找ip的时间。IP地址分为网络地址和主机地址，具体是通过子网掩码来表示，比如某个IP是10.4.25.1 他的子网掩码是255.255.255.0 则说明，前面3字节都是网络地址，最后一位是主机地址，即首先是到达10.4.25.* 这个组，然后通过1 找到对应的主机，最后获得ip的mac地址（使用arp协议）。</p>
+<p>​	上面只是输入某个域名后最早发生的事情，找到这个域名对应的mac地址，就像是打电话之前的首先需要知道别人电话号码一样。</p>
+<p>​	在现实生活中一台服务器可能会部署多个进程，他们对外提供的服务可能完全不一样，所以需要区分相同服务器上不同进行的网络服务，就会有个端口的概念，某种意义上，IP+端口是确定唯一进程的。上文提到，数据传送到IP层以后会被封装为package，IP地址的传送只是将当前的package发送到对应的mac地址上，至于是否成功，其实是随缘的，也就是不可靠的传输。为了保证传送的可靠性，在IP的上层，传输层对外提供了一个可靠的TCP协议。</p>
+<p>IP 会将TCP所在的会话层的数据进行一个封装（加上IP的header）。Header如<a target="_blank" rel="noopener" href="https://www.jianshu.com/p/90abebfe0014">下图</a></p>
+<p><img src="http://image.mingyouxiaozhu.top/2843224-361d5d314474ac75.png" alt="img"></p>
+<h3 id="TCP-和UDP"><a href="#TCP-和UDP" class="headerlink" title="TCP 和UDP"></a>TCP 和UDP</h3><h5 id="TCP"><a href="#TCP" class="headerlink" title="TCP"></a>TCP</h5><p>​	结合上面的例子，现在我们已经知道电话号码了，需要开始打电话。本次是否能够进行有效通话的前提是，能够打通电话即对方接电话。在网络中也是如此，于是就有了TCP的三次握手，和打电话一样，对面接了电话，你这边彩铃的声音结束，也看到通话中，但是一般情况下第一句都是喂，对面也说在呢，这个时候你才开始说你通过本次电话想要说的内容。四次挥手类似，这边说了拜拜，对方可能正在说话，但是他知道你说了拜拜，于是告诉你他讲话题说完在挂电话，于是你就等他说完，等他说完了，你就说挂了，然后两边才挂断电话。对应到服务器上，TCP协议的运行可划分为三个阶段：连接创建(<em>connection establishment</em>)、数据传送（<em>data transfer</em>）和连接终止（<em>connection termination</em>）。操作系统将TCP连接抽象为<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/Berkeley%E5%A5%97%E6%8E%A5%E5%AD%97">套接字</a>表示的本地端点（local end-point），作为编程接口给程序使用。在TCP连接的生命期内，本地端点要经历一系列的<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E4%BC%A0%E8%BE%93%E6%8E%A7%E5%88%B6%E5%8D%8F%E8%AE%AE#%E7%8A%B6%E6%80%81%E7%BC%96%E7%A0%81">状态</a>改变。<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E4%BC%A0%E8%BE%93%E6%8E%A7%E5%88%B6%E5%8D%8F%E8%AE%AE">wiki</a></p>
+<p>tcp中的数据是流式（stream）数据，数据的分组成为分段（segement）</p>
+<h6 id="创建连接"><a href="#创建连接" class="headerlink" title="创建连接"></a>创建连接</h6><p>三次握手：</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/Connection_TCP.png" alt="ss"></p>
+<ol>
+<li>客户端（通过执行connect函数）向服务器端发送一个SYN包，请求一个主动打开。该包携带客户端为这个连接请求而设定的随机数<strong>A</strong>作为消息序列号。</li>
+<li>服务器端收到一个合法的SYN包后，把该包放入SYN队列中；回送一个SYN&#x2F;ACK。ACK的确认码应为<strong>A+1</strong>，SYN&#x2F;ACK包本身携带一个随机产生的序号<strong>B</strong>。</li>
+<li>客户端收到SYN&#x2F;ACK包后，发送一个<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E7%A2%BA%E8%AA%8D%E8%A8%8A%E6%81%AF">ACK包</a>，该包的序号被设定为<strong>A+1</strong>，而ACK的确认码则为<strong>B+1</strong>。然后客户端的connect函数成功返回。当服务器端收到这个ACK包的时候，把请求帧从SYN队列中移出，放至ACCEPT队列中；这时accept函数如果处于阻塞状态，可以被唤醒，从ACCEPT队列中取出ACK包，重新创建一个新的用于双向通信的sockfd，并返回。</li>
+</ol>
+<p>如果服务器端接到了客户端发的SYN后回了SYN-ACK后客户端掉线了，服务器端没有收到客户端回来的ACK，那么，这个连接处于一个中间状态，既没成功，也没失败。于是，服务器端如果在一定时间内没有收到的TCP会重发SYN-ACK。在Linux下，默认重试次数为5次，重试的间隔时间从1s开始每次都翻倍，5次的重试时间间隔为1s, 2s, 4s, 8s, 16s，总共31s，第5次发出后还要等32s才知道第5次也超时了，所以，总共需要 1s + 2s + 4s+ 8s+ 16s + 32s &#x3D; 63s，TCP才会断开这个连接。使用三个TCP参数来调整行为：tcp_synack_retries 减少重试次数；tcp_max_syn_backlog，增大SYN连接数；tcp_abort_on_overflow决定超出能力时的行为。</p>
+<h6 id="传送数据"><a href="#传送数据" class="headerlink" title="传送数据"></a>传送数据</h6><p>连接创建后，相当于创建了一个管道，数据可以从管道两边传入或者接收。在服务端来说，此时的server端是将数据的传送绑定到了某个地址，客户端则会随机使用某个端口，即socket套接字。</p>
+<p>前文说过，数据在通往下层的时候都会新增一个header 在前面，在TCP所在的协议层，一个TCP的header 长度约20字节。TCP 常规的header 如下图：</p>
+<p> <img src="http://image.mingyouxiaozhu.top/blog/20200917214413232.png" alt="在这里插入图片描述"></p>
+<p>在某些场景下，存在一种可能就是当前数据都没有20字节，也就是body比header 小的情况，这种消息过多可能有浪费了网络带宽的情况。所以出现了Nagle 算法。一句话说就是将上问题到的很多的小包合在一起变成一个大的包然后发送出去，因为上文提到，TCP 是流式传递数据，个人的理解是TCP会源源不断的将数据放入到发送缓冲区或者区接受缓冲区里面拿，发送大小受到当前的MTU限制（一般是1500字节），一次性最多发送MTU大小的数据，MSS 不包含头结点的最大的数据。</p>
+<p>由于 TCP 的数据是流状的，也就是说没有数据边界，所以上层数据可能超过了MTU，这个时候会被拆分成多个包，如果使用了Nagle 算法，可能会出现多个小包被放在一起发送，在发送方，如果说一次性从缓冲区拿到了多个包的数据（处理速度小于接受速度），就可能出现TCP的粘包问题。如果说发送速度远远小于接受速度，而且一次性发送大量的数据，则接收方可能一次性无法拿到所有的数据。其实解决办法个人觉得较为简单，就是发送方和客户端约定好如何解析，比如可以按照行解析，在接收方每次遇到换行符的时候就知道当前数据已经获取完毕，或者在数据前面增加上当前数据的长度。</p>
+<p>这里还涉及到一个问题，即有序性，TCP 流数据，发送的前后顺序和接收方收到的前后顺序可能不一致。TCP每次发送的时候都会带上当前的package的序列号，该序列号是随机位置递增的数据。下图是打开百度的一次抓包。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/image-20230718154652278.png" alt="image-20230718154652278"></p>
+<p>其中序列化23,32,33 表示三次握手：</p>
+<p>23 客户端主动连接服务端，标志为为SYN，设置seq&#x3D;0</p>
+<p>32 服务端被动打开连接，连接成功后，返回ACK&#x3D; Seq of 23 +1 带上自己的seq&#x3D;0</p>
+<p>33 客户端接收到23 的ack，因为上次收到了上次seq+1 的ack 。然后再给服务端发送ACK，此时的ack等于服务端发送回来的seq+1</p>
+<p>PS： 上文中的seq其实是随机产生的一个数字，而不是从0开始，这个是wirshark默认的开启了相对seq，所以是从0开始的。本次实际的seq是随机产生的一个数</p>
+<p>通过这种方式，就能够保证消息是有序的。但是因为数据是流式的，难免出现后面的先收到，前面的还没有发送。而且接受和发送速度不一致，如何有效进行流量控制呢？答案是滑动窗口，也就是上图中的win。</p>
+<ol>
+<li>停止等待 如果当前的package一直没有发送会ack，则一直等待在当前包中</li>
+<li>回退N步  如果出现前面的发送失败，那么一直找到上次发送成功的包，然后发送后面所有的。</li>
+<li>选择性重传 只发送前面没有成功的包。</li>
+</ol>
+<p>上面三个是出现问题的时候使用的方式，第一个较为理解，低效但是简单。后面两个需要和滑动窗口一起操作。还是上图的23 和32</p>
+<p>首先23 中会带上窗口大小此时是64240字节，最大的报文MSS是1460，然后服务端返回即23，告诉客户端窗口是65535，每次能传送最大的保温是1412。也就是互相告诉了对方自己当前能够使用的空间和一次性最大的数据量，就可以进行有效的控制。如果当前对方的窗口为0 呢？</p>
+<p>如果发送方对窗口为0 的连接继续发送一条消息，再次确认win大小，如果win一直为0，则将定时发送的时间加长，一直到超过最大次数，然后连接超时。</p>
+<p>建立完三次握手后，seq 和ack的计算方式为：</p>
+<ul>
+<li>本次要发送的包的 seq &#x3D; 上一个发送的包的seq + 上一个发送的包的长度（不含包头）</li>
+<li>本次要发送的包的 ack &#x3D; 上一个接收到的包的seq + 上一个接收到的包的长度（不含包头）</li>
+</ul>
+<p>附上一个滑动窗口的可视化操作<a target="_blank" rel="noopener" href="https://media.pearsoncmg.com/aw/ecs_kurose_compnetwork_7/cw/content/interactiveanimations/selective-repeat-protocol/index.html">地址</a></p>
+<h6 id="关闭连接"><a href="#关闭连接" class="headerlink" title="关闭连接"></a>关闭连接</h6><p>数据被发送完成后，就来到了断开连接的阶段。还有一种就是服务端主动断开连接，比如使用数据库连接池就可能出现连接在服务端被干掉，但是客户端却没有感知到，再去使用这个连接就会告诉你连接已经关闭了。</p>
+<p>四次挥手：</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/Deconnection_TCP.png" alt="四次挥手"></p>
+<h5 id="UDP"><a href="#UDP" class="headerlink" title="UDP"></a>UDP</h5><p>和tcp 不同的地方，udp更像是不靠谱的邮局，一个包裹中包含了所有的信息，而不是tcp那种流式数据。但是他没有等待ack，而是发送失败就算了。</p>
+<h1 id="HTTP-和HTTPS"><a href="#HTTP-和HTTPS" class="headerlink" title="HTTP 和HTTPS"></a>HTTP 和HTTPS</h1><h3 id="HTTTP"><a href="#HTTTP" class="headerlink" title="HTTTP"></a>HTTTP</h3><p>http 是超文本传输协议(Hypertext [Transfer Protocol](<a target="_blank" rel="noopener" href="https://baike.baidu.com/item/Transfer">https://baike.baidu.com/item/Transfer</a> Protocol&#x2F;612755?fromModule&#x3D;lemma_inlink))的简称，他是运行在传输层上面的协议。http 将客户端的请求称为request，服务端的请求为response。</p>
+<p>我们访问的每一个网页，大部分情况下都是作为只读的去获取上面的信息。感觉就是将当初的报纸放到了互联网上。</p>
+<p>http 是无连接无状态的。http的无连接指的是，拿到数据以后，当前的tcp连接就被关闭了。这种被称为短连接，但是在http1.1 以后，默认是连接一直都在的，即keepalive。主要是因为现在的网页已经不再是个静态的文件，而是大量其他的数据，因为一个tcp的握手就需要三次，外加上4次挥手，相对而言是较为昂贵的操作，所以尽可能的使用相同的连接传送更多的数据是一个有效的优化。但是如果每一个请求都是一次简单的数据访问，没有多余的数据，那么可能出现资源浪费的情况，服务端一般会设置超时时间，如果是tomcat，会在Connector的配置中加上keepalivetiTimeout 。客户端也是如此，如果连接长时间不释放，也会占用资源。如果打开百度，可以看到一下的https报文:</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/image-20230718173153847.png" alt="image-20230718173153847"></p>
+<p>报文中包含了很多数据，这里不一一赘述。</p>
+<p>前文说到http是无状态的，也就是说客户访问第一次和访问无数次效果是一样的，甚至多个客户端请求都是一样的。但是有些web应用是需要知道客户的信息的，这个时候会话层就上场了。会话层的作用就是标识出当前连接属于那一次对话，或者说和谁对话。http为了做到这一点，客户端引入了cookie，服务端引入了session。也就是在cookie中记录当前请求的一些用户信息，该信息其实有多种方式保存，也可以在客户端通过参数传送。总之就是互相知晓对方的存在，标识连接的意义，会话可以在多个连接中执行。</p>
+<h3 id="HTTPS"><a href="#HTTPS" class="headerlink" title="HTTPS"></a>HTTPS</h3><p>上文提到，http是没有在状态的，那么可能存在安全问题，比如访问网页A，但是有时候如果有人拦截了你请求，因为数据都是明文传输，那么某种意义上就是将自己的信息完全暴露在外。可能会被有心人拿到数据，毕竟数据的传输过程通过N个路由器或者中继器，中间都有可能被拦截数据，这种称之为中间人攻击。如何避免，就是对数据加密。</p>
+<p>数据的加密和解密都是需要秘钥的。如何获取秘钥本身就是有难度的，通过明文传送秘钥的话，如果这个秘钥被中间人获取，那么加密就是多此一举。使用相同的秘钥进行加解密称之为对称加密，如果说秘钥能够提前被所有的客户端和服务都拿到，那么中间人是没办法进行解密的。但是秘钥不可能所有人都人手一份，肯定是需要传送的，所以对称加密是不安全的。</p>
+<p>非对称加密分为公钥和私钥，公钥加密的内容只有私钥解开，反之亦然。一般流程如下:</p>
+<ol>
+<li><p>服务器拥有公钥A与对应的私钥Z；客户端拥有公钥B与对应的私钥Y。</p>
+</li>
+<li><p>客户端把公钥B明文传输给服务器。</p>
+</li>
+<li><p>服务器把公钥A明文给客户端。</p>
+</li>
+<li><p>客户端向服务器传输的内容都用公钥A加密，服务器收到后用私钥Z解密。由于只有服务器拥有私钥Z，所以能保证这条数据的安全。</p>
+</li>
+</ol>
+<p>这种方式看起来是没有问题，但是存在的问题就是，如果客户端发送的对方本来就是有问题的呢？而且加密解密是非常耗费资源的，所以https 并没有使用上文的方法，而是采用了非对象加密和对称加密结合的方式。采用的方式如下</p>
+<ol>
+<li>服务器有公钥A和私钥Z</li>
+<li>客户端发起请求，服务端将公钥A发送给客户端</li>
+<li>客户端随机生成一个对称加密的秘钥X，通过A加密后发送给服务器</li>
+<li>服务器拿到秘钥X，然后解密得到秘钥X</li>
+<li>后续都通过秘钥X 进行对称加密。</li>
+</ol>
+<p>但是仍然不能解决上诉的问题，就是如果中间人模仿自己作为客户端或者服务端，数据还是有泄露的风险，于是就有个CA机构颁发的证书，先通过证书确定没有中间人搞坏事，就可以确保自己的数据是和真正的服务器进行数据交换。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/image-20230718182144373.png" alt="image-20230718182144373"></p>
+<p>再次使用下上面的百度的图片；</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/image-20230718154652278.png" alt="image-20230718154652278"></p>
+<p>其中41 协议是TLS，然后发送的是client hello，内容如下：</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/image-20230718182429255.png" alt="image-20230718182429255"></p>
+<p>还有一个cipher suits 标识支持的加密协议。上文有61中，这里不展开了。上面有个TCP segement len 是517，所以后面的44 的ack是518，即上次seq（517）+1。说明服务端收到了你的随机数，然后服务端在45 发送一个server hello：</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/image-20230718185642594.png" alt="image-20230718185642594"></p>
+<p>也返回了服务端的一个随机数。并且返回当前使用的协议。在46,48后面有个TCP segment of 说明当前的报文太大了，被分成了多个包发送，极速的位置就是在49，其中46 中有</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/image-20230718190841582.png" alt="image-20230718190841582"></p>
+<p>47 则是对46 的ack。49 中包含了三个，第一个是验证证书，还有key change 以及hello done。其中key exchange 使用来server 段计算加密的参数。hello done 是说明加密解密的握手已经结束了。此时客户端和服务端都包含了对方随机生成的随机数。并且验证好了证书的合法性，确认好了加密的方式和参数，客户端会在生成一个随机数，然后通过公钥对Random进行加密发送给server，server解密后，最后使用这个随机数和前面的2个随机数生成一个加密秘钥。也就是52中，client发送给服务端会携带一个client key exchange ，这个值是根据前面提到的三个随机数生产的，最后会使用这个作为后续的加密公钥，同时客户端告诉服务端自己的加密方式发送变化，然后发送一个加密的数据进行测试。最后服务端会发送new session ticket 即55，这个是消除服务端需要维护的每个客户端会话状态相关的，然后就是编码改变，最后也会发一个测试。彼此成功后，SSL\TSL的握手就结束了，后续就会使用协商的加密进行对称加密了。</p>
+<p><img src="http://image.mingyouxiaozhu.top/457860-746cbfdfb80d8077.jpg" alt="img">，</p>
+<p>上图为整体加密过程。</p>
+<p>在wireshark上来看，TLS是处于传输层的，但是他又是依托在tcp之上的。处于比较中间的位置。</p>
+<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>本文只能说对tcp和http有个大概得介绍，主要还是加深自己理解七层模型。因为在看kafka 和netty的代码时候，总是会遇到关于网络相关的问题。</p>
+<p>update 2023-07-17</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2023/07/11/%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97/" rel="prev" title="消息队列之磁盘读写">
+                  <i class="fa fa-chevron-left"></i> 消息队列之磁盘读写
+                </a>
+            </div>
+            <div class="post-nav-item">
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2023</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">mingyouxiaozhu</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>

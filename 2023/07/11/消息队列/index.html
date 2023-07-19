@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha256-HtsXJanqjKTc8vVQjO4YMhiqFoXkfBsjBWcX91T1jr8=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"example.com","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.17.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="前言  本文主要是为后续涉及到的kafka，rocketmq，pulsar 现在较为流行的基于磁盘存储的消息队列做一个OS层的简单介绍。了解和回顾为什么基于磁盘这种比较“慢”的IO系统能够承载出要求高吞吐的消息队列系统。主要涉及到：文件读写和部分socket，仅仅针对linux系统。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="消息队列之磁盘读写">
+<meta property="og:url" content="http://example.com/2023/07/11/%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97/index.html">
+<meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
+<meta property="og:description" content="前言  本文主要是为后续涉及到的kafka，rocketmq，pulsar 现在较为流行的基于磁盘存储的消息队列做一个OS层的简单介绍。了解和回顾为什么基于磁盘这种比较“慢”的IO系统能够承载出要求高吞吐的消息队列系统。主要涉及到：文件读写和部分socket，仅仅针对linux系统。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/1373708-20181204141007712-522556734.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/20161215230141403">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/c2f5be8efd607489a98796dfe862eb89.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/01-04%20system%20hardwares.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/2a705f1e6fe64e57ace3ef0dd1b2571a~tplv-k3u1fbpfcp-zoom-in-crop-mark_4536_0_0_0%20(1).png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/modb_20211221_53b4bb62-620c-11ec-8199-fa163eb4f6be.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/modb_20211221_53e278ea-620c-11ec-8199-fa163eb4f6be.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/mv6rvie1tf.jpeg">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/modb_20211221_53fef376-620c-11ec-8199-fa163eb4f6be.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/senfile-%E9%9B%B6%E6%8B%B7%E8%B4%9D.png">
+<meta property="article:published_time" content="2023-07-11T07:56:25.000Z">
+<meta property="article:modified_time" content="2023-07-13T11:56:30.763Z">
+<meta property="article:author" content="mingyouxiaozhu">
+<meta property="article:tag" content="mq os">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://image.mingyouxiaozhu.top/blog/1373708-20181204141007712-522556734.png">
+
+
+<link rel="canonical" href="http://example.com/2023/07/11/%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/07/11/%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97/","path":"2023/07/11/消息队列/","title":"消息队列之磁盘读写"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>消息队列之磁盘读写 | mingyouxiaozhu's blog</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">mingyouxiaozhu's blog</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F"><span class="nav-number">2.</span> <span class="nav-text">文件系统</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%BA%E6%A2%B0%E7%A1%AC%E7%9B%98"><span class="nav-number">2.1.</span> <span class="nav-text">机械硬盘</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9B%BA%E6%80%81%E7%A1%AC%E7%9B%98"><span class="nav-number">2.2.</span> <span class="nav-text">固态硬盘</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E8%AF%BB%E5%86%99%E6%96%87%E4%BB%B6"><span class="nav-number">2.3.</span> <span class="nav-text">操作系统读写文件</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%AF%BB%E5%86%99%E8%BF%87%E7%A8%8B"><span class="nav-number">2.3.1.</span> <span class="nav-text">读写过程</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E5%86%85%E6%A0%B8%E6%80%81%E5%92%8C%E7%94%A8%E6%88%B7%E6%80%81"><span class="nav-number">2.3.2.</span> <span class="nav-text">操作系统内核态和用户态</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%BC%98%E5%8C%96%E6%8E%AA%E6%96%BD"><span class="nav-number">2.3.3.</span> <span class="nav-text">优化措施</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E8%99%9A%E6%8B%9F%E5%86%85%E5%AD%98"><span class="nav-number">2.3.3.1.</span> <span class="nav-text">虚拟内存</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#DMA"><span class="nav-number">2.3.3.2.</span> <span class="nav-text">DMA</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%87%8F%E5%B0%91%E6%95%B0%E6%8D%AE%E6%8B%B7%E8%B4%9D"><span class="nav-number">2.3.3.3.</span> <span class="nav-text">减少数据拷贝</span></a><ol class="nav-child"><li class="nav-item nav-level-6"><a class="nav-link" href="#mmap"><span class="nav-number">2.3.3.3.1.</span> <span class="nav-text">mmap</span></a></li><li class="nav-item nav-level-6"><a class="nav-link" href="#sendfile"><span class="nav-number">2.3.3.3.2.</span> <span class="nav-text">sendfile</span></a></li><li class="nav-item nav-level-6"><a class="nav-link" href="#SG-DMA"><span class="nav-number">2.3.3.3.3.</span> <span class="nav-text">SG-DMA</span></a></li></ol></li><li class="nav-item nav-level-5"><a class="nav-link" href="#zero-copy"><span class="nav-number">2.3.3.4.</span> <span class="nav-text">zero-copy</span></a></li></ol></li></ol></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number"></span> <span class="nav-text">总结</span></a></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">mingyouxiaozhu</p>
+  <div class="site-description" itemprop="description">enjoy life ,enjoy coding</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/07/11/%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="消息队列之磁盘读写 | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          消息队列之磁盘读写
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2023-07-11 15:56:25" itemprop="dateCreated datePublished" datetime="2023-07-11T15:56:25+08:00">2023-07-11</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-07-13 19:56:30" itemprop="dateModified" datetime="2023-07-13T19:56:30+08:00">2023-07-13</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>  本文主要是为后续涉及到的kafka，rocketmq，pulsar 现在较为流行的基于磁盘存储的消息队列做一个OS层的简单介绍。了解和回顾为什么基于磁盘这种比较“慢”的IO系统能够承载出要求高吞吐的消息队列系统。主要涉及到：文件读写和部分socket，仅仅针对linux系统。</p>
+<span id="more"></span>
+<h2 id="文件系统"><a href="#文件系统" class="headerlink" title="文件系统"></a>文件系统</h2><h3 id="机械硬盘"><a href="#机械硬盘" class="headerlink" title="机械硬盘"></a>机械硬盘</h3><p><img src="http://image.mingyouxiaozhu.top/blog/1373708-20181204141007712-522556734.png" alt="img"></p>
+<p>上图就是一个大概的机械硬盘的内部组件，核心就是有个磁体臂带着磁头在磁盘感知或者修改当前磁盘位置上的磁体正负极，正负极是天然的二进制。通过感知正负极就能够了解当前位置的数据是0 还是 1 ，修改的话可以通过电流将磁体的正负极反转。不由得想起<code>绝命毒师</code>里面他们使用大的磁场销毁证据，但是现实生活中，用磁铁是很难将机械硬盘里面的数据进行修改的。google的[大佬 jeff](有谁可以介绍一下谷歌大牛Jeff Dean以及与他相关的事迹么? - 极客时间的回答 - 知乎 <a target="_blank" rel="noopener" href="https://www.zhihu.com/question/22081653/answer/617167013">https://www.zhihu.com/question/22081653/answer/617167013</a>) 曾遇到超新星爆炸导致计算机芯片中的数据从0变成1，这种基于底层的0 1 转换能够查出问题的简直是神人。</p>
+<p>这里不再详细说明磁盘里面的材料和反转的细节实现，反正读数据就是获取当前磁体正负极，写数据就是根据电流将磁体修改为指定的正负极。整个过程中不是磁头臂在旋转，而是磁盘在旋转，磁头臂只是去对应的磁盘上读取数据。这也就有个磁道的概念，就是每一圈磁体，相同圈的磁体在不同磁盘上称之为柱面。</p>
+<p>这里遇到一个问题，因为磁体只管读写，他的目标单位只是一圈的每一个磁体的正负极。不能每次写入都记录好当前的位置和下一个位置，这样的话，记录数据的元数据也是非常大的一个数据。于是有了扇区的概念，其实就是将磁道分成一段段的，每一段称之为一个扇区。<br><a target="_blank" rel="noopener" href="https://mingyouxiaozhu.top/">https://mingyouxiaozhu.top/</a><br><img src="http://image.mingyouxiaozhu.top/blog/20161215230141403" alt="扇区"></p>
+<p>扇区是文件读取的最小单位，一般为512B，后面也有4KB，而磁盘的总容量就等于<br>$$<br>扇区容量 \times 扇区数 \times 柱面数 \times 盘面<br>$$<br>总的来说，每次读取或者写入，首先就是找到对应数据的扇区，然后将扇区里面的数据进行读写。这些扇区可能在一起，也可能没在一起。在操作系统看来，一个扇区才区区512字节，实在是有点太小了，于是根据局部性原理将一次性获取的数据设置在了4KB，一次性获取8个扇区。这里涉及到的就是文件系统和机械硬盘对数据进行管理的抽象，在文件系统，最小的读写单元是4Kb，即一块，在机械硬盘是8个扇区也就是可能是连续或者非连续的8个扇区。</p>
+<h3 id="固态硬盘"><a href="#固态硬盘" class="headerlink" title="固态硬盘"></a>固态硬盘</h3><p>固态硬盘相对机械硬盘就是快，体积也小很多，没有深入了解过。。</p>
+<p>在机械硬盘的介绍中，可以看出来，一次机械硬盘的读取可能涉及到</p>
+<ul>
+<li>寻道时间 </li>
+<li>等待磁盘旋转可能时间</li>
+<li>传输数据时间</li>
+</ul>
+<p>传送数据是肯定无法进行优化的，但是如果我们能缩短上面两个的时间，那么可以将硬盘的效率拉高。如果能够顺序的写入数据，那么当前的写入就基本上没有了寻道的时间了。所以顺序写入的速度远远高于随机写入的原因就在于此。</p>
+<h3 id="操作系统读写文件"><a href="#操作系统读写文件" class="headerlink" title="操作系统读写文件"></a>操作系统读写文件</h3><h4 id="读写过程"><a href="#读写过程" class="headerlink" title="读写过程"></a>读写过程</h4><p>这里不赘述文件系统的详细读写过程，只是大概说下文件读写过程中会经历的过程。根据冯诺依曼的计算机架构。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/c2f5be8efd607489a98796dfe862eb89.png" alt="img"></p>
+<center>冯诺依曼结构</center>
+
+<p>计算单元和控制单元<code>CPU</code>只会主存（内存）进行数据交互。如果从键盘输入到显示器显示，首先是连接输入设备，打开键盘的io，键盘开始写入，数据被放到内存中，涉及到解码编码等，输出到显示器。这里会涉及到一个问题，CPU何时知道输入数据了？答案是中断，每次写入完成的时候会发送一个中断给CPU，CPU根据中断的类型做出对应的行为。如果当前我们输入M这个字母，首先有M输入这个事件发生会触发输入的中断，操作系统接收到这个中断，保存当前执行的上下文，然后调用输入的中断程序，将数据M进行处理，将他处理为能被输出设备解析的字符，然后发送给输出端缓冲区，最后被输出端显示。也是因为这个原因，我们可以实时的感知到我们输入的数据，因为这个是按照字符来的。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/01-04%20system%20hardwares.png" alt="01-04 system hardwares"></p>
+<p>如果是执行已经在计算机磁盘上的数据呢？比如运行hello world的程序，首先键盘输入指令，shell 程序会将字符逐一的输出到显示器上，同时这个数据被放入内存中，当我们回车后，shell 知道当前指令结束，开始执行hello world 的程序。一般情况下，肯定是需要整个程序被写入内存才开始执行，如果是学键盘，每个字符一个中断，那么这个中断的数据量可能是非常庞大的。于是有个DMA（ 直接存储读取）技术，该技术可以让CPU告诉IO，我需要哪里的数据，IO你负责去搬运，搬运好了放在某个内存中。这样数据在读开始和结束两个中断就搞定了。</p>
+<h4 id="操作系统内核态和用户态"><a href="#操作系统内核态和用户态" class="headerlink" title="操作系统内核态和用户态"></a>操作系统内核态和用户态</h4><p>CPU 虽然很高速，但是其实是很傻的，就只会勤勤恳恳地按照指令执行，而有些指令是很危险的，比如将内存里面的数据全部清理，删除xxx核心文件等。Linux 将权限分为两种，一种是可以使用所有指令的核心态权限，还有一种是只能执行CPU普通指令级的数据，其他的如IO读写，网卡访问，甚至申请内存等等都不允许执行。但是运行的程序必然需要和其他的IO进行一个交互，如何交互呢？答案就是系统调用。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/2a705f1e6fe64e57ace3ef0dd1b2571a~tplv-k3u1fbpfcp-zoom-in-crop-mark_4536_0_0_0%20(1).png" alt="操作系统"></p>
+<p>从程序的角度，如果发送了系统调用，就是程序主动从用户态切换到核心态。这个切换的过程涉及到</p>
+<ul>
+<li>保留用户态现场（上下文，寄存器，栈等）</li>
+<li>复制系统调用参数到内核栈空间，进入内核 态</li>
+<li>检查</li>
+<li>执行内核态</li>
+<li>复制返回结果，切换到用户态</li>
+<li>恢复用户态现场</li>
+</ul>
+<p>大家可以看到，如果说需要去磁盘或者网卡读数据，首先是将当前的上下文保存好，然后等到系统调用完成，复制数据。最后拿到数据。那么数据其实有两份在内存中，而且上下文切换相对是比较昂贵的操作。如何能够减少这个时间呢？</p>
+<h4 id="优化措施"><a href="#优化措施" class="headerlink" title="优化措施"></a>优化措施</h4><h5 id="虚拟内存"><a href="#虚拟内存" class="headerlink" title="虚拟内存"></a>虚拟内存</h5><p>为了和物理地址解耦，操作系统对外提供的是虚拟地址。这样的好处就是如果升级了内存，除非超过当前能够表示的最大值，如32位最大能到4G内存，如果从2G升级到4G内存，那么操作系统不需要做额外的数据更改。还有就是可以做到多对一，多个虚拟地址可以指向一个物理地址。让进程以为自己对某个值是独占的，其实是共享的。看上去很危险，但是在内核态和用户态而言，可能仅仅需要将两边的虚拟地址修改到同一物理地址就能够实现数据共享，而不是说真的将数据完全复制一遍。</p>
+<h5 id="DMA"><a href="#DMA" class="headerlink" title="DMA"></a>DMA</h5><p>上文已经提到过DMA,即直接内存访问。在没有DMA技术的时候，CPU和IO的交互都是通过系统总线连接并且传输。在数据传输完成之前，CPU是一直处于等待的状态，CPU 本来就是较为昂贵的资源，这无疑会影响其他正在运行的程序。</p>
+<p>DMA 就是将IO数据的拷贝进行了外包，每次CPU需要读取数据，会给DMA发送一个IO请求，DMA 会从IO设备的数据缓冲区读取数据，等到读取到CPU告诉的数据后，发送数据读取完毕的信号。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/modb_20211221_53b4bb62-620c-11ec-8199-fa163eb4f6be.png" alt="img"></p>
+<p>这样就释放出了读取数据阶段的CPU，通过中断的方式唤醒CPU。这里数据读取完的信号，其实也是中断，不过是CPU的中断，这种中断只是将CPU处理的上下文进行一个切换，其实就是保存当前CPU寄存器中的数据，而不需要学用户态和内核态一样需要保存当前的用户态堆栈等信息。</p>
+<h5 id="减少数据拷贝"><a href="#减少数据拷贝" class="headerlink" title="减少数据拷贝"></a>减少数据拷贝</h5><h6 id="mmap"><a href="#mmap" class="headerlink" title="mmap"></a>mmap</h6><p>上文提到，如果当前程序需要获取IO里的数据，需要切换到内核态，等内核收到数据后，再将数据从内核态拷贝到用户态，一次读取都涉及到2次数据拷贝，如果是一次读写，就涉及到4次数据拷贝。然后结合上文的虚拟内存，就可以减少数据的拷贝。这个技术叫MMAP 即内存映射</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/modb_20211221_53e278ea-620c-11ec-8199-fa163eb4f6be.png" alt="img"></p>
+<p>粗暴的理解就是，用户态在写入数据的时候是和内核态共享的一块内存。</p>
+<ul>
+<li>用户调用mmap方法，进行系统调用，进入内核态</li>
+<li>CPU 使用DMA 技术从硬件中获取数据到内核缓冲区，返回</li>
+<li>切换 回到用户态</li>
+</ul>
+<p>这里只涉及到两次切换和一次DMA 数据拷贝。如果需要将当前的文件发送，则。</p>
+<ul>
+<li>用户调用write ，再次切换成内核态</li>
+<li>CPU 将上文的数据拷贝到socket缓冲区中</li>
+<li>CPU 将数据从socket缓冲区拷贝到网卡，发回</li>
+<li>切换回用户态，返回write</li>
+</ul>
+<p>需要注意的是，mmap 方法被调用的时候并没有写入数据，首先该方法会返回一个只想进程逻辑地址空间的地址，然后进程不需要调用read或者write，只需要通过指针操作文件。当操作进行的时候，该地址其实没有数据，所以会触发缺页中断，缺页中断发生后，操作系统会将数据写入到这个页中进行真正的数据copy，<a target="_blank" rel="noopener" href="https://cloud.tencent.com/developer/article/1429083">图片来源</a></p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/mv6rvie1tf.jpeg" alt="img"></p>
+<p>从读写的过程中，当前一共执行了3次数据拷贝，4次上下文切换，3次中只有一次需要CPU，其他的都是通过DMA来进行的。</p>
+<h6 id="sendfile"><a href="#sendfile" class="headerlink" title="sendfile"></a>sendfile</h6><p>从上文可以看到，当前仍然进行了4次切换，sendfile进一步减少了这个上下文切换。DMA copy数据不再需要mmap返回后触发缺页这么获取数据，而是调用后就可以实现两个文件之间的传输。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/modb_20211221_53fef376-620c-11ec-8199-fa163eb4f6be.png" alt="img"></p>
+<p>因为mmap主要是简历了虚拟地址和实际地址的映射，需要用户态和内核态，但是sendfile 确实直接将两个文件连在一起，不在通过虚拟内存映射同一块地址了。但是仍然需要cpu将内核态的数据copy到缓冲区。</p>
+<ul>
+<li>用户态发起sendfile 系统调用，切换到内核态</li>
+<li>DMA 拷贝数据到内核态</li>
+<li>CPU拷贝数到socket缓冲区</li>
+<li>完成，切换回用户态</li>
+</ul>
+<h6 id="SG-DMA"><a href="#SG-DMA" class="headerlink" title="SG-DMA"></a>SG-DMA</h6><p>如果说当前网卡支持SG-DMA 功能，能够进一步减少数据的复制。</p>
+<h5 id="zero-copy"><a href="#zero-copy" class="headerlink" title="zero-copy"></a>zero-copy</h5><p>零拷贝其实主要指的是数据在内核态和用户态的数据备份，或者说CPU是否进行了数据拷贝。核心是因为前期为了安全，将操作限制的比较全，部分只读或者只用于传送的数据是没有必要定义这么死板的。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/senfile-%E9%9B%B6%E6%8B%B7%E8%B4%9D.png" alt="senfile-零拷贝"></p>
+<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>本文主要介绍了一些文件读写和socket读写的基础概念，并没有很深入的探讨，甚至可能有自己理解不到位的地方。</p>
+<p>note： 2023-07-13 </p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/mq-os/" rel="tag"># mq os</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2023/07/11/paxos/" rel="prev" title="paxos">
+                  <i class="fa fa-chevron-left"></i> paxos
+                </a>
+            </div>
+            <div class="post-nav-item">
+                <a href="/2023/07/17/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/" rel="next" title="计算机网络">
+                  计算机网络 <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2023</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">mingyouxiaozhu</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>

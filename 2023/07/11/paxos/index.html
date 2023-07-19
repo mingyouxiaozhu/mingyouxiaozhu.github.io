@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha256-HtsXJanqjKTc8vVQjO4YMhiqFoXkfBsjBWcX91T1jr8=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"example.com","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.17.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="Basic Paxos前言分布式共识算法，分布式共识和分布式一致性还是有一定的差异的。  分布式一致 《数据密集型系统设计》作者 Martin Kleppmann 在书中提到，一致性其实在ACID 中处于一个比较尴尬的地位，因为一致性其实是包含业务态的，是否一致性本质上说程序是否按照业务输入得到业务预期的输出。主要讲究的是并发执行的过程中，程序是否会出现超出预期的输出。主要是执行完毕后的状态 分布">
+<meta property="og:type" content="article">
+<meta property="og:title" content="paxos">
+<meta property="og:url" content="http://example.com/2023/07/11/paxos/index.html">
+<meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
+<meta property="og:description" content="Basic Paxos前言分布式共识算法，分布式共识和分布式一致性还是有一定的差异的。  分布式一致 《数据密集型系统设计》作者 Martin Kleppmann 在书中提到，一致性其实在ACID 中处于一个比较尴尬的地位，因为一致性其实是包含业务态的，是否一致性本质上说程序是否按照业务输入得到业务预期的输出。主要讲究的是并发执行的过程中，程序是否会出现超出预期的输出。主要是执行完毕后的状态 分布">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/single.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/acceptFirst.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/acceptEvery.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/whenChose.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/proposalNum.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/all.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/alreadChosen.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/notChosenButFound.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/notChosenAndNotFound.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/liveLock.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/log.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/mutliPaxo.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/whenChosen.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/configChange.png">
+<meta property="article:published_time" content="2023-07-11T06:53:22.000Z">
+<meta property="article:modified_time" content="2023-07-11T07:18:06.440Z">
+<meta property="article:author" content="mingyouxiaozhu">
+<meta property="article:tag" content="分布式共识 paxos">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://image.mingyouxiaozhu.top/blog/single.png">
+
+
+<link rel="canonical" href="http://example.com/2023/07/11/paxos/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/07/11/paxos/","path":"2023/07/11/paxos/","title":"paxos"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>paxos | mingyouxiaozhu's blog</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">mingyouxiaozhu's blog</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#Basic-Paxos"><span class="nav-number">1.</span> <span class="nav-text">Basic Paxos</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Paxos"><span class="nav-number">1.2.</span> <span class="nav-text">Paxos</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98"><span class="nav-number">1.2.1.</span> <span class="nav-text">问题</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88"><span class="nav-number">1.2.2.</span> <span class="nav-text">解决方案</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#1-%E5%8D%95%E4%B8%AAaccepter"><span class="nav-number">1.2.2.0.1.</span> <span class="nav-text">1 单个accepter</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#2-%E5%A6%82%E4%BD%95%E7%A1%AE%E5%AE%9A%E6%8F%90%E6%A1%88"><span class="nav-number">1.2.2.0.2.</span> <span class="nav-text">2 如何确定提案</span></a><ol class="nav-child"><li class="nav-item nav-level-6"><a class="nav-link" href="#2-1-%E5%8F%AA%E6%8E%A5%E5%8F%97%E7%AC%AC%E4%B8%80%E6%AC%A1%E6%8F%90%E6%A1%88"><span class="nav-number">1.2.2.0.2.1.</span> <span class="nav-text">2.1 只接受第一次提案</span></a></li><li class="nav-item nav-level-6"><a class="nav-link" href="#2-2-%E6%8E%A5%E5%8F%97%E6%AF%8F%E4%B8%80%E6%AC%A1%E6%8F%90%E6%A1%88"><span class="nav-number">1.2.2.0.2.2.</span> <span class="nav-text">2.2 接受每一次提案</span></a></li><li class="nav-item nav-level-6"><a class="nav-link" href="#3-%E4%BD%95%E6%97%B6%E7%A1%AE%E5%AE%9A%E5%8F%AF%E4%BB%A5%E9%80%89%E6%8B%A9%E6%9F%90%E5%80%BC"><span class="nav-number">1.2.2.0.2.3.</span> <span class="nav-text">3 何时确定可以选择某值</span></a></li></ol></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%A4%E9%98%B6%E6%AE%B5%E5%8D%8F%E8%AE%AE"><span class="nav-number">1.2.3.</span> <span class="nav-text">两阶段协议</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%8F%AF%E8%83%BD%E7%9A%84%E5%9C%BA%E6%99%AF"><span class="nav-number">1.2.3.1.</span> <span class="nav-text">可能的场景</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#State-Machine"><span class="nav-number">1.2.4.</span> <span class="nav-text">State Machine</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Mutli-Paxos"><span class="nav-number">1.2.5.</span> <span class="nav-text">Mutli-Paxos</span></a><ol class="nav-child"><li class="nav-item nav-level-6"><a class="nav-link" href="#LOG"><span class="nav-number">1.2.5.0.0.1.</span> <span class="nav-text">LOG</span></a></li><li class="nav-item nav-level-6"><a class="nav-link" href="#%E6%89%A7%E8%A1%8C%E8%BF%87%E7%A8%8B"><span class="nav-number">1.2.5.0.0.2.</span> <span class="nav-text">执行过程</span></a></li></ol></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E9%9B%86%E7%BE%A4%E5%8F%98%E6%9B%B4"><span class="nav-number">1.2.5.1.</span> <span class="nav-text">集群变更</span></a></li></ol></li></ol></li></ol></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">mingyouxiaozhu</p>
+  <div class="site-description" itemprop="description">enjoy life ,enjoy coding</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">3</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/07/11/paxos/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="paxos | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          paxos
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+      
+
+      <time title="创建时间：2023-07-11 14:53:22 / 修改时间：15:18:06" itemprop="dateCreated datePublished" datetime="2023-07-11T14:53:22+08:00">2023-07-11</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h1 id="Basic-Paxos"><a href="#Basic-Paxos" class="headerlink" title="Basic Paxos"></a>Basic Paxos</h1><h2 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h2><p>分布式共识算法，分布式共识和分布式一致性还是有一定的差异的。</p>
+<ul>
+<li>分布式一致 《数据密集型系统设计》作者 Martin Kleppmann 在书中提到，一致性其实在ACID 中处于一个比较尴尬的地位，因为一致性其实是包含业务态的，是否一致性本质上说程序是否按照业务输入得到业务预期的输出。主要讲究的是并发执行的过程中，程序是否会出现超出预期的输出。主要是执行完毕后的状态</li>
+<li>分布式共识 分布式共识主要是作用在分布式系统中，多个程序能够在值或者操作上得到共识，也就是所有或者major的服务都获取和确定到某一个值或者某一次操作。在工程上将，个人觉得是客户端获取到的值是确定且唯一的。</li>
+</ul>
+<p>个人认为，分布式共识主要的作用是实现分布式一致。通过每次的共识，最终做到服务状态的一致。</p>
+<span id="more"></span>
+
+<h2 id="Paxos"><a href="#Paxos" class="headerlink" title="Paxos"></a>Paxos</h2><p>在不多的分布式共识算法种，可以说paxos 是所有的分布式共识算法绕不过去的山，也可以说它是分布式共识的鼻祖。由神lamport 提出来的。关于paxos的故事本文就不多说了。他解决的问题就是在多个<a target="_blank" rel="noopener" href="https://lamport.azurewebsites.net/pubs/paxos-simple.pdf">论文</a>中称之为<code>agent</code> 的程序之间确定一个值。确定一个值，本质上就是这么简单的事情。一个paxso instance 只是确定一个值，只要了解到这件事情，论文中的很多困惑理解起来会比较简单，因为每次只执行一个值，可能在程序中给人一种很奇怪的感觉，即自己的输入和预期的结果不一致。</p>
+<h3 id="问题"><a href="#问题" class="headerlink" title="问题"></a>问题</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">Assume a collection of processes that can propose values. A consensus algorithm</span><br><span class="line">ensures that a single one among the proposed values is chosen. If</span><br><span class="line">no value is proposed, then no value should be chosen. If a value has been</span><br><span class="line">chosen, then processes should be able to learn the chosen value. </span><br></pre></td></tr></table></figure>
+
+<p>假设有一些进程可以提出value。共识算法保证了在所有提出的value里只有一个会被选中。如果没有value被提出，那么也就没有value会被选中。如果一个value被选中了，那么其他的进程应该能够获取该value。</p>
+<p>上诉的来自于paxos的论文。其实就是一个对外提供输入输出的集群中，当某一个值或者操作（来自客户端的增删改或者集群状态发生变化），在并行提出多个值的情况下，在一次paxos instance 中只会有个一值被集群最终确定（集群都获取到该值或者都执行了一个操作）。为了做到上诉，该集群对外提供：</p>
+<ul>
+<li>safty <ul>
+<li>每次只有一个提案被选中</li>
+<li>只有一个值被选中以后集群中才可以被其他的程序获取（learn）。</li>
+</ul>
+</li>
+<li>Liveness <ul>
+<li>只要提出了提案，那么最终会有一个提案被集群确定</li>
+<li>只要确定了某个提案，集群中其他的系统最终的系统都会学习到提案。</li>
+</ul>
+</li>
+</ul>
+<p>上面的安全性，主要是为了避免出现共识中出现无法达成一致，或者达成错误一致的情况。后面的liveness 则是保证集群服务的可用性。</p>
+<p>上面两个是分布式共识都需要保证的，也就是无论当前的并发多高，并行程序范围多大，但是都不能出现在某一个时间出现选择了多个值，或者选择了某个值，但是却没有被其他的程序感知到。前者可能出现状态机的错误，后者则是无法保证高可用。</p>
+<p>paxos 里称集群集群中的每个实例为agent，agent 在paxos 扮演的角色有：</p>
+<ul>
+<li>proposer。提案发起者，负责接收客户端请求和对集群发起提案并且确定提案是否最终被选择（chosen）</li>
+<li>accepter    接受者，负责接收proposer的提案和决定是否接受提案。记录达成共识的值和状态</li>
+<li>learner 学习者，从集群中学习到最终达成共识的值</li>
+<li>proposal 提案 需要确定的值，一般提案会包含提案号和提案值</li>
+</ul>
+<p>在提案的过程中，可能会出现各种问题，包括服务突然掉线，系统重启，网路造成消息演示等等情况。但是不会出现错误的消息。一个提案最终被确定就是集群中大多数或者全部的acceptor 都接受该值。</p>
+<h3 id="解决方案"><a href="#解决方案" class="headerlink" title="解决方案"></a>解决方案</h3><h5 id="1-单个accepter"><a href="#1-单个accepter" class="headerlink" title="1 单个accepter"></a>1 单个accepter</h5><p>因为一个提案是由proposer提出，最后被accepter 接收，如果被多个接收最终会选择这个值。所以如果只有一个accepter，那么该acceptor 可以从多个proposal 中选择一个，并且应用。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/single.png" alt="img"></p>
+<p>​                     1.0 单个acceptor</p>
+<p>出现的问题就是单点问题，如果在多个agent中选择一个作为acceptor，则会出现单点问题，该节点挂掉以后，集群无法对外提供服务。</p>
+<p><em>解决方案</em>： quorum，只需要major个数的agent 都accept某个值，就说明该值被chosen。quorum 一般采用基数个agent，major &gt;&#x3D; n&#x2F;2 +1</p>
+<h5 id="2-如何确定提案"><a href="#2-如何确定提案" class="headerlink" title="2 如何确定提案"></a>2 如何确定提案</h5><h6 id="2-1-只接受第一次提案"><a href="#2-1-只接受第一次提案" class="headerlink" title="2.1 只接受第一次提案"></a>2.1 只接受第一次提案</h6><p>  <img src="http://image.mingyouxiaozhu.top/blog/acceptFirst.png" alt="只接受第一次"></p>
+<p>如果每次都选择第一次提案，那么集群在并发的情况下，是不会达成一致的。因为每一个server 都只会选择自己第一次收到的proposal，上图中的red ，blue 和green。</p>
+<h6 id="2-2-接受每一次提案"><a href="#2-2-接受每一次提案" class="headerlink" title="2.2 接受每一次提案"></a>2.2 接受每一次提案</h6><p><img src="http://image.mingyouxiaozhu.top/blog/acceptEvery.png" alt="chose_ervery_time"></p>
+<p>如果接受每一次的提案，那么会出现已经被选中的提案被后来者给覆盖的情况。如上文中，red 已经被major的服务选中，但是 s3 会使用自己的blue 将red覆盖掉。这里有个困惑点，在某种意义上blue 可以看作是第二次请求，为什么会影响现有的值呢。这里药说明的就是前文提到的，一个paxos 只会确定一个值，所以上文中全部都是一个base paoxs的实例，即 只确定一个值。</p>
+<p>上文两种方案都存在问题，就是接受第一次提案会造成无法确定哪个值被选中，接受每一次提案则可能出现已经被选择的提案被后来者覆盖的情况。</p>
+<p>所以，需要有一个方法，使得已经选择的提案被后来者感知到，感知到以后，该proposer不会在提交自己当前的提案，而是会将已经感知的值作为自己的提案发送给其他的acceptor。这里需要使用到的就是两阶段提交。</p>
+<p>这里论文的P1 和P2</p>
+<ul>
+<li><p>P1. An acceptor must accept the first proposal that it receives.</p>
+</li>
+<li><p>P2. If a proposal with value v is chosen, then every higher-numbered proposal</p>
+<p>that is chosen has value v.</p>
+</li>
+</ul>
+<p>p1 主要是保障一次paxos 实例跑完肯定能够选出来一个值，p2 就是为了避免出现后面2.2的情况，已经被选择的proposal被覆盖掉。</p>
+<p>为了达到上面的要求，需要用到两阶段协议。即，在决定proposer 需要知道当前已经被选中的值，如果没有就提交自己准备选中的值。</p>
+<h6 id="3-何时确定可以选择某值"><a href="#3-何时确定可以选择某值" class="headerlink" title="3 何时确定可以选择某值"></a>3 何时确定可以选择某值</h6><p><img src="http://image.mingyouxiaozhu.top/blog/whenChose.png" alt="img"></p>
+<p>如果按照发起的时间进行确定，则会出现上文的情况，s1 首先发起提案red，由于各种原因，该值到达s2,s3的时间比后面提交的提案blue晚，而去后来者s5 的提案blue已经被选中。在这个情况下，s3不能够接受red 提案，而且需要将自己已经选中的提案blue发送给s1。</p>
+<p>所以，我们需要知道提案的时间和状态，这里的时间算得上一种可以比较的逻辑时间。即在没有选择提案的时候，时间越新的提案我们会接受，并且会拒绝任何小于当前提案时间的提案。如果我们的提案使用的是全局自增id，如果当前的agent s接受到了提案号为n的提案，那么他会拒绝任何提案号小于n的提案。</p>
+<ul>
+<li><p>P2a . If a proposal with value v is chosen, then every higher-numbered proposal</p>
+<p>accepted by any acceptor has value v.</p>
+</li>
+<li><p>P2b . If a proposal with value v is chosen, then every higher-numbered proposal</p>
+<p>issued by any proposer has value v.</p>
+</li>
+</ul>
+<p>对应的就是paxos中的P2a 和P2b，主要是保障了数据的安全性，即已经被选择的数据不会被其他修改，2 就是不会存在提案中的值被修改的情况。</p>
+<p>从上面可以看到，提案和值其实可以说的上是分开的。因为P2b中说到，如果一个值被确定了，那么后续的提案中的值也是当前已经被选择的值。</p>
+<p>为了做到上面两点a）不再accpet 比当前的proposal num 小的提案，b）一旦一个值被选择，那么后续的提案中的值都是这个值。需要的首先就是一个可以比较的proposal num。</p>
+<p>这个num 是可以比较的，而且越大的值优先级越高，优先级高的提案一旦被接收到，就会拒绝优先级低的提案。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/proposalNum.png" alt="img"></p>
+<p>一般的proposal num 分为round Number+ serverid。其中serverid 用来区分集群不同的server，round num 是一个自增的数值。</p>
+<p>每一个服务中都会有以下的数据：</p>
+<ul>
+<li>maxRound 表示当前已知的最大的roundnumber</li>
+<li>创建proposal num ，增加maxRound 并且将它和serverid 合并</li>
+</ul>
+<p>上诉的数据，包括serverid的创建都需要写入磁盘，方便程序重启后能够恢复到正确的状态。在accepter 看来，roundNumber 越大，则协议越新或者说优先级越高。当某一次roundnum相同，可以根据serverid 进行排序，保证在任何时间都不会出现完全一摸一样的两个proposal num携带者不同的value。</p>
+<h3 id="两阶段协议"><a href="#两阶段协议" class="headerlink" title="两阶段协议"></a>两阶段协议</h3><ul>
+<li>广播 prepare 请求给集群中的accepter，此时仅仅传递proposal num<ul>
+<li>a） 确定当前是否有已经被选中的值</li>
+<li>b） 将accepter 中的roundNum 增加，让acceptor能够拒绝接受比当前roundNum 小的，也就是优先级低的值。</li>
+</ul>
+</li>
+<li>广播Accept  请求给集群中的acceptor<ul>
+<li>c）将当前的需要确定的提案的值发送给所有的acceptor。</li>
+</ul>
+</li>
+</ul>
+<p><img src="http://image.mingyouxiaozhu.top/blog/all.png" alt="img"></p>
+<p>整体的流程如上图。</p>
+<h4 id="可能的场景"><a href="#可能的场景" class="headerlink" title="可能的场景"></a>可能的场景</h4><ul>
+<li>当前accepter 已经选中了某个值</li>
+</ul>
+<p><img src="http://image.mingyouxiaozhu.top/blog/alreadChosen.png" alt="img"></p>
+<p>途中的P 表示proposalNum 前面是roundNum 后面是 serverid，的图片也是如此。</p>
+<p>上图的场景为</p>
+<ul>
+<li>s1 广播了r3 的prepare 请求，s1-s5 全部收到<ul>
+<li>s1-s5 收到后作出如下承诺<ul>
+<li>a） 不再接受比r3 小的prepare请求或者accepted请求</li>
+<li>b）如果当前我已经有值被接受，就将该值传回给s1</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>s1 收到prepare请求的返回后，此时s2-s5 都没有accepted 的值，则返回给s1 的是一个acceptedNum（r3）和一个null（表示当前没有accepted的值）</li>
+<li>s1 将自己知道自己当前可以写入值，于是将在当前proposalNum（3.1）写入了值X，X被广播到集群中，此时s2,s3都接受到了这个值，而且本地没有出现更大的proposalNum，该值被他们接受。并且将这个proposalNum返回给s1</li>
+<li>s1 收到s2,s3..的回复，当接收到的回复大于major（5&#x2F;2+1）的时候，判定当前的值X被选中。本次paxos结束</li>
+<li>在s5接受到s1的prepare请求后，因为某种原因没有收到accept的值，但是接收到了客户端的请求，自己发送了一个r4 的prepare</li>
+<li>此时集群中已经有X 被选中。由于当前prepare 需要发送给major个服务才有效，所以当发送给s3 的时候，s3 发现自己已经有个值被接受，他会接受r4的prepare请求，也就是将当前的round 增加为4，但是将已经接受的X返回给s5。</li>
+<li>当s5 接受到s3的返回后，他知道当前有个值被选择了，于是就会将这个选择的值作为接下来的放入自己的accepte请求，广播给其他的服务，最终R4 会将X 发送给集群中其他的服务。所以在X上，整个集群会达到最终的共识</li>
+</ul>
+<p>最让人难以理解的其实就是这个accept请求，当s5本来确定值y的时候，最后却是在帮忙确定x。但是上文已经提到，一个basic paxos 做的事情只有一件事情，确定一个值，所以x最终还是被确定了。注意的是，只有proposal的发起者，s1知道这个值当前已经被选中了，其他的服务其实只知道自己已经接受了值X</p>
+<ul>
+<li>当前还没有选中，但是被接受的值能够被下一轮看到。</li>
+</ul>
+<p><img src="http://image.mingyouxiaozhu.top/blog/notChosenButFound.png" alt="img"></p>
+<p>上图中，s1 的prepare操作和前面类似，只是accept的请求有区别，只发送给了s3，s3选择接受该值。</p>
+<ul>
+<li>s1 发送prepare成功后 ，继续发送accept，很长一段时间都在等待major的服务返回</li>
+<li>在s1等待的过程中，没有收到其他的prepare，如果此时接收到了其他的prepare请求，他会将自己的accept（X）的值返回给prepare的发起者。</li>
+<li>在等待major的过程中，s3 首先收到了X，并且选择接受。</li>
+<li>s5发起prepare请求，并且刚好被s3收到，s3 的操作和上面的类似，将X返回给s5，s5继续帮忙同步X，最终集群在X上达成共识</li>
+</ul>
+<p>上文出现的情况就是，当服务s1发起prepare请求后，是否会立即认为自己可以accpet这个值，如果是的话，那么只要有prepare请求发送给s1,最后都会协助将X同步。但是也不会破坏集群的规则。</p>
+<ul>
+<li>当前还没有选中，但是被接受的值没有能够被下一轮看到。</li>
+</ul>
+<p><img src="http://image.mingyouxiaozhu.top/blog/notChosenAndNotFound.png" alt="img"></p>
+<p>上图中，s1 的accept的值，最后没有被r4看到。</p>
+<ul>
+<li>s1 首先prepare r3 ，然后accpet X，然后等待X的返回major</li>
+<li>在accpet请求发送过程中，s5,在r4发起了prepare请求，并且得到major返回，因为此时accept的请求没有到s3，s3收到s5的请求后，会对s5承诺自己后续不会在接受小于r4的accept请求或者prepare请求。</li>
+<li>s5 收到major s3-s5，开始发送accept请求</li>
+<li>在发送的过程中,s3 收到了来自s1的accept请求，但是r3&lt;r4。s3已经作出了不会在接受小于r3的请求的承诺，于是会拒绝该请求。</li>
+<li>s5的accept 发送到s3,此时r4 和s3承诺相同，于是接受r4的值Y</li>
+<li>s5收到major的请求，并且判定Y已经被选中</li>
+<li>s1 一直没有收到，接收到的accept 没有达到major。于是重新开始下一轮</li>
+<li>在下一轮中，s1肯定会收到Y已经被接受的信息，会继续帮忙将Y同步到集群。</li>
+</ul>
+<p>所以，当一个值能否被选中，主要还是看他获取major回复的时间。但是最先获取到major accpet的值（Y）肯定会在集群中达成共识。针对Y这个值肯定能达成一致。</p>
+<ul>
+<li>活锁</li>
+</ul>
+<p><img src="http://image.mingyouxiaozhu.top/blog/liveLock.png" alt="img"></p>
+<p>开心了这么久，我们终于遇到了麻烦。上文中其实隐约可以感觉到，一个值是否被最终选定的主要根据时accept的值被其他的proposer看到的时机。如果出现上图中的情况，就会出问题。</p>
+<ul>
+<li>当s1 发起prepare 请求后，发送accept的过程中，s5发送了prepare，并且在accept的请求达到之前达到major</li>
+<li>s1 后续的accpet会被拒绝，然后s1发起新的prepare请求，在s5 的accept值之前达到major</li>
+</ul>
+<p>这样循环，整个集群始终在prepare和accpet之间来回。无法达成共识。</p>
+<p>解决办法：</p>
+<ul>
+<li>没次prepare失败后，随机休眠一段时间后重新发起</li>
+<li>选择一个leader，针对leader的选举做一次paxos，然后让后续请求都走leader。</li>
+</ul>
+<p>现在总的来看下，再一次paxos中的IO使用情况。</p>
+<ul>
+<li>proposalNum 需要持久话在本地，基本上创建或者更新都需要</li>
+<li>接受到的value需要持久话到本地</li>
+</ul>
+<p>在一次paxos中，首先从客户端获取到值，基本上每一个操作都需要刷盘一次<a target="_blank" rel="noopener" href="https://www.cs.utexas.edu/users/lorenzo/corsi/cs380d/papers/paper2-1.pdf">paxos made live</a>中提到。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">for each of the propose, promise, accept, acknowledgment, and commit messages</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="State-Machine"><a href="#State-Machine" class="headerlink" title="State Machine"></a>State Machine</h3><p>上文提到了paxos 如何确定一个值，那么这个值最后的使用是如何使用，如何返回给客户端的呢？在paxos中还有一个状态，就是learner，在一次paxos完成后，需要将当前已经选定的值发送给learner。如果说每个程序都是learner，那么在一次paxos后，应该有一个commit的操作发送给每个服务，在commit以后，就可以返回给客户端。</p>
+<p>而commit 操作就是说明当前的值可以被应用到状态机中。</p>
+<h3 id="Mutli-Paxos"><a href="#Mutli-Paxos" class="headerlink" title="Mutli-Paxos"></a>Mutli-Paxos</h3><p>上面是basic paxos，每次只会确定一个值。而且每次操作都会有很多的刷盘和io操作。那么是否可以优化，可以在必要的时候执行一次paxos，而不是每次都执行paxos。</p>
+<p>对此<a target="_blank" rel="noopener" href="https://www.cs.utexas.edu/users/lorenzo/corsi/cs380d/papers/paper2-1.pdf">paxos made live</a> 提出了Mutli-Paxos，其实lamport也提过一句mutli paxos，这里我武断的认为paxos made live 提出了mutli-paxos。</p>
+<h6 id="LOG"><a href="#LOG" class="headerlink" title="LOG"></a>LOG</h6><p>log 在程序中无处不在，这里的log 有点类似于mysql 里面的redo-log，或者部分wal。log的好处：</p>
+<ul>
+<li>是一个FIFO的数组结构</li>
+<li>根据日志可以完整的将当前的状态及复制出来</li>
+</ul>
+<p>上文提到的复制状态机复制的其实就是这个log。将所有的操作看作为log，然后复制给集群中的服务，对日志做到了共识，那么就是对日志中的操作达成共识，最终做到状态机的一致性。</p>
+<p>首先是将paxos instance 的提案中新增加一个数据，除了value 以外，新增一个index，表示当前的value放在那个index。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/log.png" alt="img"></p>
+<p>这么做的好处就是，我们终于可以使用并发写入了。因为index 不同，paxos 就不会在一个值上产生冲突。现在我们的请求由原来的prepare(proposalNum),accepte(proposalNum,v)转变为了prepare(proposalNum，index)，accepte(proposalNum,v，index)。</p>
+<h6 id="执行过程"><a href="#执行过程" class="headerlink" title="执行过程"></a>执行过程</h6><p><img src="http://image.mingyouxiaozhu.top/blog/mutliPaxo.png" alt="执行过程"></p>
+<p>上文为一个执行过程（右边为s3 挂掉的情况），其中深色框表示当前的值已经被选中，没有黑色的框表示已经被接受（不一定被复制到大多数的服务器上），空白为没有操作：</p>
+<ul>
+<li>1 找到没有发生prepare（空白的）的index</li>
+<li>2 针对1的这个index跑一次basic paxos</li>
+<li>3 如果prepare 返回了accepted 的值，如上文中jmp 发送给4，但是4 从s2 接受到当前已经有sub，所以会选择sub 在4 这个位置</li>
+<li>4 选择5 进行下一轮，如果4 都是空白的，则在4 直接写入jmp</li>
+</ul>
+<p>这么做的好处是，在index4 执行的时候，可以并行执行index5,但是，如果这些操作的顺序必须是全部完成，不能有日志空洞的情况下，被commit到复制状态机器中，如果说在5 执行完毕后，4 还没有执行完毕，也会有一定的问题，在业务看来，如果是一个事务中的操作，那么后来者index5可能已经被选中，但是他的依赖，index4 还没有被选中，甚至可能出现index4 没有被复制的情况下，index5 已经被复制了。当然，如果并发执行的前提条件是前者prepare 成功以后才可以进行后续的prepare，那么也不存在该问题。个人觉得，如果需要得到并行写入日志的结果，那么必须保证业务之间的无联系，也就是说在并行的情况下，相同业务关联的必须是原子的，比如insert操作后面跟着update操作，那么就必须在一个线程中安顺序执行。但是无论如何执行，日志commit到状态机的过程中，必须是按照日志顺序的。不能存在空洞的日志。</p>
+<p>上文其实还是一个basic paxos，只是从value的值的确认转换成了（index，value）。在很多的场景下，该方案仍然存在index的冲突，导致paxos多次执行。</p>
+<p>解决办法就是选举一个leader，为什么选举出一个leader 就能够解决上诉的问题呢？</p>
+<p>prepare 请求的作用：</p>
+<ul>
+<li>拒绝比当前proposal num 小的proposals</li>
+<li>返回当前可能已经有接受（accpet）的值。</li>
+</ul>
+<p>如果我们能够知道当前的服务proposal num 肯定是最大的，而且能够确认当前没有其他的accpet 请求。那么，我们就相当于对整个log数组有了prepare的权限，可以一直执行accpet请求。所以，prepare请求需要返回一个值，表示当前的accepter没有accpet请求。当major的accepter 返回了这个结果，则当前的proposer 就作为了leader。</p>
+<ul>
+<li>accepter 返回noMoreAccepted ，说明在这个index 以后都不再有accept的值，也就是说当前的proposer可以安全的写入自己想写入的index。</li>
+<li>如果当前的accepter 返回了noMoreAccepted，在accept请求被拒绝之前，不再接受其他的proposer的prepare请求</li>
+<li>当proposer 接受到major的noMoreAccepted，说明他拥有了后续日志的accept 权限，后续不需要在执行prepare</li>
+</ul>
+<p>这里主要是看prepare请求的作用，在basic paxos 中，prepare 的主要作用就是上文提到的，拒绝优先级低（older）的proposal，返回目前已经接受（accpte）的值。所以如果我们能够知道当前没有已经accept的值，而且让acceptor保证后续只接收proposer的accept，则可以做到拥有后续accept的权限。</p>
+<p>采用上诉方式会出现和目标不一致的情况：</p>
+<ul>
+<li>a） 可能部分节点没有所有的日志，目标是需要当前集群拥有所有的日志拷贝</li>
+<li>b）只有leader 知道自己最终选定了那个值。</li>
+</ul>
+<p>出现a）的情况是因为leader只需要保证major的写入成功就可以判定是否选中，出现b是因为leader收到major以后，就判定当前的值被选定。</p>
+<ul>
+<li><p>a的解决办法，leader后台不断重试，将自己accpet的值发送给没有accept成功的accepter</p>
+</li>
+<li><p>b的解决办法 ，判定那些index 已经被选中</p>
+<ul>
+<li><p>在服务中新增一个数组，acceptedProposal[] 其中acceptedProposal[i]&#x3D;∞表示index 为i的log 意见被选中,否则味当前的proposalNum。</p>
+</li>
+<li><p>每一个服务增加一个firstUnchosenIndex，用来表示最早没有被选中的index。</p>
+</li>
+<li><p>proposer，此时为leader，将通知accepter，自己已经选中的值。通知的办法：</p>
+<ul>
+<li>在每次accept请求中加入firstUnchosenIndex </li>
+<li>在accepter 中，如果当前的index小于leader的firstUnchosenIndex，并且acceptedProposal[i] 里面的proposal num和当前的rpc请求中的proposal num相同。</li>
+<li>如果能够保证上诉的要求，则说明当前的index已经被选中了。</li>
+</ul>
+<p><img src="http://image.mingyouxiaozhu.top/blog/whenChosen.png" alt="img"></p>
+</li>
+</ul>
+</li>
+</ul>
+<p>注意的是上面关于被选中的条件，首先是index 小于firstUnchosenIndex，然后就是proposalNum 和当前的proposalNum 相等。这隐藏了一个条件，就是proposer只会提交或者确定自己任期（roundNum）里面的值。上图的示例中，当前proposer的proposalNum（3.4），发送给accepter的值为 (3.4,8,v,7)。accepter此时的firstUnchosenIndex&#x3D;4 ，小于proposer的7，于是从4 到7 中，查看proposalNum 等于3.4的，将其设置为选中状态（设置为无穷大），然后将8 位置写入proposalNum。</p>
+<p>可以看到，在这个场景下，index&#x3D;4 位置的一直是没有提交的。这个出现的原因，其实是对index 4 的值到底有没有写入多数派有关系，如果按照basic paxos而言，此时应该会针对4 这个位置执行一次basic paxos（使用当前的proposalNum），然后根据发现的值确定为选中。在某些场景下还是会出问题，如果当前index4 是客户端发来的insert语句，但是还没有commit 的时候leader挂了，但是已经复制到了除开当前leader以外的所有proposer上了，那么index4 可以被leader 通过paxos 进行复制，执行一次发现accpet的值以后，写入自己的index4，标记为已经选中。但是如果没被复制到大多数服务上，而且被当前的leader 观察到，那么leader 也会将这个值复制，就会出现一个阿里称之为<a target="_blank" rel="noopener" href="http://oceanbase.org.cn/?p=111">幽灵复现</a>的问题。简单来说就是前面提到的，如果某一条日志被写入少数派，而且在切换主以后被leader 提交，则出现客户端发起请求失败，但是最终还是被写入到状态机的情况。</p>
+<ul>
+<li>如果proposer 的firstUnchosenIndex 比集群中其他的accepter 的firstUnchosenIndex 都大，则说明他已经被commit的数据是最大的</li>
+<li>如果proposer 的firstUnchosenIndex 比集群中其他的accepter的firstUnchosenIndex 小，那么需要从最大的里面补充数据。因为firstUnchosenIndex 以前的数据都是正确的，所以不会存在错误的数据。</li>
+<li>在最大的firstUnchosenIndex  到现在proposer的最大logIndex 之间是不确定的状态，有可能当前的值已经被大多数复制，并且返回了true给客户端，也可能写入成功了，但是返回给客户端的过程中超时了。这个第三态个人认为是无法确定的。暂时想到两种场景。<ul>
+<li>如果对外提供的客户端会有失败重试的话<ul>
+<li>将firstUnchosenIndex  到logIndex 中的值都执行basicPaxo，其中proposer 如果有值则写入value，没有则写入空，可以获取到其他acceptor的值。</li>
+<li>记录该时间段的所有trans,如果客户端重试就丢弃。</li>
+<li>该方法在客户端一直存活，或者支持回查的接口的情况下，是可以保证数据的一致性</li>
+</ul>
+</li>
+<li>如果客户端不重试<ul>
+<li>每次commit 日志后，需要立即同步到major 或者写入状态机后才能够返回给客户端true</li>
+<li>丢弃firstUnchosenIndex  到maxlog中不确定的值。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="集群变更"><a href="#集群变更" class="headerlink" title="集群变更"></a>集群变更</h4><p>集群的变更较为简单，即将变更作为一个日志写入到paxo的日志中。然后设置一个值，让这个变更在写入到log后多久生效，即写入为i，设置生效为3，则集群会在index i+3 生效。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/configChange.png" alt="执行过程"></p>
+<p>上图中，C1 第一次集群变更index1，C2 为第二次变更index3 ,C1 提交给state machine的时间为index4，C2为index6 。</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/%E5%88%86%E5%B8%83%E5%BC%8F%E5%85%B1%E8%AF%86-paxos/" rel="tag"># 分布式共识 paxos</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+            </div>
+            <div class="post-nav-item">
+                <a href="/2023/07/11/%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97/" rel="next" title="消息队列之磁盘读写">
+                  消息队列之磁盘读写 <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2023</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">mingyouxiaozhu</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>
