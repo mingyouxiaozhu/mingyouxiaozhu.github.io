@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha256-HtsXJanqjKTc8vVQjO4YMhiqFoXkfBsjBWcX91T1jr8=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"example.com","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.17.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="前言随着互联网的繁荣，使用网络的人越来越多，对一个服务而言就是调用他的人越来越多，让一个服务器能够接受越来越多的客户端，尽量压榨服务器的资源成了后续程序员的研究方向。也就是有了著名的C10K 问题，C10M问题。本文主要探讨下IO在网络请求的演进。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="IO多路复用">
+<meta property="og:url" content="http://example.com/2023/07/19/IO%E5%A4%9A%E8%B7%AF%E5%A4%8D%E7%94%A8/index.html">
+<meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
+<meta property="og:description" content="前言随着互联网的繁荣，使用网络的人越来越多，对一个服务而言就是调用他的人越来越多，让一个服务器能够接受越来越多的客户端，尽量压榨服务器的资源成了后续程序员的研究方向。也就是有了著名的C10K 问题，C10M问题。本文主要探讨下IO在网络请求的演进。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230719110735839.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16898232069996.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_1689823277167.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16898230496749.png">
+<meta property="article:published_time" content="2023-07-19T02:42:28.000Z">
+<meta property="article:modified_time" content="2023-07-21T09:09:16.999Z">
+<meta property="article:author" content="mingyouxiaozhu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://image.mingyouxiaozhu.top/blog/image-20230719110735839.png">
+
+
+<link rel="canonical" href="http://example.com/2023/07/19/IO%E5%A4%9A%E8%B7%AF%E5%A4%8D%E7%94%A8/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/07/19/IO%E5%A4%9A%E8%B7%AF%E5%A4%8D%E7%94%A8/","path":"2023/07/19/IO多路复用/","title":"IO多路复用"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>IO多路复用 | mingyouxiaozhu's blog</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">mingyouxiaozhu's blog</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#BIO"><span class="nav-number">2.</span> <span class="nav-text">BIO</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E4%BA%8E%E6%96%87%E4%BB%B6%E6%8F%8F%E8%BF%B0%E7%AC%A6%E5%92%8Cchannel"><span class="nav-number">2.0.1.</span> <span class="nav-text">关于文件描述符和channel</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#NIO"><span class="nav-number">2.1.</span> <span class="nav-text">NIO</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Reactor-%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F"><span class="nav-number">2.2.</span> <span class="nav-text">Reactor 设计模式</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Select-poll-%E5%92%8CEpoll"><span class="nav-number">2.3.</span> <span class="nav-text">Select poll 和Epoll</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#select"><span class="nav-number">2.3.0.1.</span> <span class="nav-text">select</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#poll"><span class="nav-number">2.3.1.</span> <span class="nav-text">poll</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Epoll"><span class="nav-number">2.3.2.</span> <span class="nav-text">Epoll</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%90%8E%E8%AE%B0"><span class="nav-number">3.</span> <span class="nav-text">后记</span></a></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">mingyouxiaozhu</p>
+  <div class="site-description" itemprop="description">enjoy life ,enjoy coding</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/07/19/IO%E5%A4%9A%E8%B7%AF%E5%A4%8D%E7%94%A8/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="IO多路复用 | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          IO多路复用
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2023-07-19 10:42:28" itemprop="dateCreated datePublished" datetime="2023-07-19T10:42:28+08:00">2023-07-19</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-07-21 17:09:16" itemprop="dateModified" datetime="2023-07-21T17:09:16+08:00">2023-07-21</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p>随着互联网的繁荣，使用网络的人越来越多，对一个服务而言就是调用他的人越来越多，让一个服务器能够接受越来越多的客户端，尽量压榨服务器的资源成了后续程序员的研究方向。也就是有了著名的<a target="_blank" rel="noopener" href="http://www.kegel.com/c10k.html">C10K</a> 问题，<a target="_blank" rel="noopener" href="http://highscalability.com/blog/2013/5/13/the-secret-to-10-million-concurrent-connections-the-kernel-i.html">C10M</a>问题。本文主要探讨下IO在网络请求的演进。</p>
+<span id="more"></span>
+<h1 id="BIO"><a href="#BIO" class="headerlink" title="BIO"></a>BIO</h1><p><img src="http://image.mingyouxiaozhu.top/blog/image-20230719110735839.png" alt="image-20230719110735839"></p>
+<p><a target="_blank" rel="noopener" href="https://gee.cs.oswego.edu/dl/cpjslides/nio.pdf">上图</a>是经典的服务处理网络模型。客户端请求，然后服务端每个请求做处理。这里面涉及到的问题就是如何处理。</p>
+<p>第一个模型就是最简单的模型，使用队列的方式，先进先出，依次处理每个请求。这种情况就好比开个饭馆，但是呢，你每次只招待一个客户，招待员将客户招待进门，厨师为他做菜，然后等他吃完，招待员将他送走。无论是开哪一种餐厅，这种方式都无法接受。因为招待员在工作的时候，厨师没事情做，厨师做完菜也需要等着下次订单才开始继续做菜。我们的客人统统在外面等着。这种方式在计算机中就是进程级别的等待IO</p>
+<p>第二种就是，每次进来都有一个服务员为他做事情，厨师会稍微忙点，因为这个时候点菜的人多起来了。当然为了成本，不能来多少客人就招多少服务员，突然哪天生意太好饭店的服务员可能比客人都多。所以可以只招特定的服务员。</p>
+<p>第三种方式就是将服务员进行不同职能的区分，比如门口专职一位，控制当前饭店的客人进出，内部的服务员负责代理客户到桌子，还有人端盘子，洗菜等等。他们之间通过对讲机进行沟通。</p>
+<p>上面的例子个人觉得和现在的应用服务端很类似，首先连接创建就是客人到了店门口，客人进入就餐，点菜过程就是传送需要的参数，此时服务器是处于读客户端请求的节点，菜单点完，厨师做菜，端盘子上桌客人开始吃饭，此时服务端进入写的状态。等到客人吃完饭，客户端拿到了所有的数据就可以返回了。</p>
+<p>也就是服务端就是accept–&gt;read –&gt;write。客户端就是connect–&gt;write–&gt; read 。上一个事件的结束也就意味着下一次事件的开始，也就是事件驱动模式的运行。后面演化出来了reactor涉及模式，该模式主要是操作系统对外提供了事件通知的select poll 和epoll</p>
+<p>其中select是一个数组默认大小是1024，服务端可以接受到accept时间后，将该连接的channel绑定到select中，并且标识出下次唤醒是因为该channel上发送了read事件。</p>
+<h3 id="关于文件描述符和channel"><a href="#关于文件描述符和channel" class="headerlink" title="关于文件描述符和channel"></a>关于文件描述符和channel</h3><p>这里需要介绍下这个channel，在**<a target="_blank" rel="noopener" href="http://www.di.uevora.pt/~lmr/syscalls.html">UNIX System Calls</a>**中介绍到：</p>
+<blockquote>
+<p> A channel is a connection between a process and a file that appears to the process as an unformatted stream of bytes.</p>
+</blockquote>
+<p>因为在linux中everything is file ，所以可以理解成当前运行进程和其他进程、IO等交换数据的时候就是打开了一个channel，比如socket，打开了文件，pipe等。</p>
+<p>在linux中，服务端一般绑定在一个端口上，客户端连接该服务端的时候会通过IP:port的方式进行connect，此时客户端也会使用一个端口创建，该端口会在&#x2F;proc&#x2F;{pid}&#x2F;fd下新建文件描述符，然后当有链接创建的时候会在&#x2F;proc&#x2F;net&#x2F;tcp6 下创建对应的文件描述符。也就是说，如果创建了某个链接，在tcp目录下会创建一个文件，该文件标识出具体的某次请求，上面会有端口号等信息</p>
+<blockquote>
+<p> sl  local_address rem_address   st tx_queue rx_queue tr tm-&gt;when retrnsmt   uid  timeout inode  </p>
+<p> 0: 0100007F:0016 00000000:0000 0A 00000000:00000000 00:00000000 00000000   500        0 14759 1 ffff8801396d5b00 3000 0 0 2 -1</p>
+</blockquote>
+<p>相应的，在fd目录下也会有个对应的文件描述符，标识出当前打开了某个socket。当网络数据达到的时候，会放在在套接字接受缓冲区，发送会放在发送缓冲区，也就是fd目录下的socket描述符对应的文件缓冲区中。</p>
+<h2 id="NIO"><a href="#NIO" class="headerlink" title="NIO"></a>NIO</h2><p>not-blocking IO。上文提到了阻塞IO和使用线程的方式，但是都发现了部分缺点。而且也提到数据的发送和接受都是会放在socket的缓冲区的，那么是否可以等他在缓冲区数据放好以后，通知下系统，然后系统在决定是否拉数据或者发送呢？</p>
+<p>当我们收到accept事件后，将当前的文件描述符（fd文件）放入到epoll中，然后将他的唤醒事件变成读，因为此时数据是由操作系统将网卡上的数据读入到数据缓冲区的，而且tcp是流式的数据。等到有数据到达读缓冲区的时候会产生数据回调，触发读事件，然后下次epoll 处理中就可以收到读就绪的文件描述符，此时有两种方式，即来一个数据触发一次或者有数据的时候就触发一次。即：</p>
+<p><code>epoll</code> 可以使用两种触发模式：边缘触发（Edge-Triggered）和水平触发（Level-Triggered）。它们是 <code>epoll</code> 提供的不同 I&#x2F;O 事件触发方式。</p>
+<ol>
+<li><strong>边缘触发（Edge-Triggered）：</strong><ul>
+<li>在边缘触发模式下，<code>epoll</code> 仅在状态改变时通知应用程序。也就是说，只有当 I&#x2F;O 事件从未就绪状态变为就绪状态时，<code>epoll</code> 才会通知应用程序。</li>
+<li>一旦应用程序收到就绪通知，它需要尽可能地处理所有可用的数据，直到再次调用 <code>epoll_wait</code> 获取下一次就绪通知。</li>
+<li>边缘触发可以确保应用程序不会错过状态改变的事件，但也要求应用程序在接收到通知后立即处理数据，否则会出现数据丢失的情况。</li>
+</ul>
+</li>
+<li><strong>水平触发（Level-Triggered）：</strong><ul>
+<li>在水平触发模式下，<code>epoll</code> 只要 I&#x2F;O 事件处于就绪状态，就会一直通知应用程序。也就是说，只要有数据可读或可写，<code>epoll</code> 就会通知应用程序。</li>
+<li>如果应用程序没有处理完所有的可用数据，<code>epoll</code> 将持续不断地通知应用程序，直到数据被处理完为止。</li>
+<li>水平触发不要求应用程序立即处理所有数据，应用程序可以在任何时候处理数据，但需要确保在数据可读或可写时持续处理，否则可能会出现数据丢失。</li>
+</ul>
+</li>
+</ol>
+<p>好坏很显然就是，如果边缘触发没有处理完数据，可能会造成数据丢失。</p>
+<blockquote>
+<p>在Netty中，<strong>NioChannel体系是水平触发，EpollChannel体系是边缘触发</strong>。</p>
+</blockquote>
+<p>回到以前提到过的零拷贝来，现在知晓的情况就是，数据被写入到socket读写缓冲区，读取这部分的数据是需要系统调用的。如果传入的buffer 就是最终我们使用的buffer，则不需要将数据从缓冲区复制到内核态后复制给用户态，减少了一次数据拷贝。</p>
+<p>有了epoll 后，可以进一步将操作分离，比如使用一个epoll 专门处理accept，然后将读写事件放入到其他的epoll中。也就是reactor设计模式：</p>
+<h2 id="Reactor-设计模式"><a href="#Reactor-设计模式" class="headerlink" title="Reactor 设计模式"></a>Reactor 设计模式</h2><p>首先是使用一个epoll：</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16898232069996.png" alt="img"></p>
+<p>在主线程中，负责接受，处理和发送。</p>
+<p>然后就是使用线程池，将业务处理逻辑和接受分开：</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_1689823277167.png" alt="img"></p>
+<p>更进一步，将reactor分为两个，一个专职接收，一个专职处理</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16898230496749.png" alt="img"></p>
+<h2 id="Select-poll-和Epoll"><a href="#Select-poll-和Epoll" class="headerlink" title="Select poll 和Epoll"></a>Select poll 和Epoll</h2><h4 id="select"><a href="#select" class="headerlink" title="select"></a>select</h4><p>select的设计比较暴力，可以浅显的认为创建了一个定长（1024）的数组，应用通过传入文件描述符，并且设置文件描述符的触发的事件，然后会发送到内核态。内核态会轮询这个数组中的事件，如果事件被触发，则会select，并且将对于的描述符修改，用于指示那些描述符是准备好了的。最后会发回到应用层。</p>
+<h3 id="poll"><a href="#poll" class="headerlink" title="poll"></a>poll</h3><p>poll 相较于select的性能没有提升，但是去掉了1024的限制，不在将文件描述符放在数组中，而是放在内核的链表中，在链表中轮询数据。这样减少了大小的限制，但是仍然需要内核上下文切换和数据的拷贝（每次都需要传送一个polldfs的对象），而且都是轮询的方式，性能和开销相对较大。</p>
+<h3 id="Epoll"><a href="#Epoll" class="headerlink" title="Epoll"></a>Epoll</h3><p>epoll在上面的两个基础上做了优化，首先就是不在一次性遍历所有的数据，而是将准备好的事件的node 信息先存放在链表中，每次只需要遍历和返回准备好的数据就行了。然后就是上文是根据文件描述符进行判断是否有事件发生并且修改文件描述符里面的信息，epoll 减少了这一步的操作，因为他记录的是inode table中的数据，这样无论上层如何变化，只要该inode发生变化，就直接触发事件。而且用户每次只需要传入对应的事件到内核态，不在需要将整个数据传入。</p>
+<h1 id="后记"><a href="#后记" class="headerlink" title="后记"></a>后记</h1><p>IO 多路复用里面的复用是指的复用了一个线程或者进程去监听多个IO事件。实现就是通过事件通知，减少不必要的等待。未来如果某天可以直接去读取IO的写缓冲数据或者读缓冲数据不知道回事什么样子的。也就是直接绑定到了网卡上，然后指定各种硬件，算不算是回到了曾经。</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2023/07/17/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/" rel="prev" title="计算机网络">
+                  <i class="fa fa-chevron-left"></i> 计算机网络
+                </a>
+            </div>
+            <div class="post-nav-item">
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2023</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">mingyouxiaozhu</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>
