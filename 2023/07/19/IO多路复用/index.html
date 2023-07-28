@@ -31,7 +31,7 @@
 <meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_1689823277167.png">
 <meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16898230496749.png">
 <meta property="article:published_time" content="2023-07-19T02:42:28.000Z">
-<meta property="article:modified_time" content="2023-07-21T09:09:16.999Z">
+<meta property="article:modified_time" content="2023-07-22T15:27:07.218Z">
 <meta property="article:author" content="mingyouxiaozhu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="http://image.mingyouxiaozhu.top/blog/image-20230719110735839.png">
@@ -122,7 +122,7 @@
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
         <a href="/archives/">
-          <span class="site-state-item-count">4</span>
+          <span class="site-state-item-count">5</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
@@ -190,7 +190,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-07-21 17:09:16" itemprop="dateModified" datetime="2023-07-21T17:09:16+08:00">2023-07-21</time>
+      <time title="修改时间：2023-07-22 23:27:07" itemprop="dateModified" datetime="2023-07-22T23:27:07+08:00">2023-07-22</time>
     </span>
 
   
@@ -253,7 +253,7 @@
 <p><img src="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_1689823277167.png" alt="img"></p>
 <p>更进一步，将reactor分为两个，一个专职接收，一个专职处理</p>
 <p><img src="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16898230496749.png" alt="img"></p>
-<h2 id="Select-poll-和Epoll"><a href="#Select-poll-和Epoll" class="headerlink" title="Select poll 和Epoll"></a>Select poll 和Epoll</h2><h4 id="select"><a href="#select" class="headerlink" title="select"></a>select</h4><p>select的设计比较暴力，可以浅显的认为创建了一个定长（1024）的数组，应用通过传入文件描述符，并且设置文件描述符的触发的事件，然后会发送到内核态。内核态会轮询这个数组中的事件，如果事件被触发，则会select，并且将对于的描述符修改，用于指示那些描述符是准备好了的。最后会发回到应用层。</p>
+<h2 id="Select-poll-和Epoll"><a href="#Select-poll-和Epoll" class="headerlink" title="Select poll 和Epoll"></a>Select poll 和Epoll</h2><h4 id="select"><a href="#select" class="headerlink" title="select"></a>select</h4><p>select的设计比较暴力，可以浅显的认为创建了一个定长（1024）的数组，应用通过传入文件描述符，并且设置文件描述符的触发的事件，然后会发送到内核态。内核态会轮询这个数组中的事件，如果事件被触发，则会select，并且将对传入的的描述符修改，用于指示描述符是准备好了的，所以如果实在循环中使用的话，文件描述符需要重新生成。最后会发回到应用层。</p>
 <h3 id="poll"><a href="#poll" class="headerlink" title="poll"></a>poll</h3><p>poll 相较于select的性能没有提升，但是去掉了1024的限制，不在将文件描述符放在数组中，而是放在内核的链表中，在链表中轮询数据。这样减少了大小的限制，但是仍然需要内核上下文切换和数据的拷贝（每次都需要传送一个polldfs的对象），而且都是轮询的方式，性能和开销相对较大。</p>
 <h3 id="Epoll"><a href="#Epoll" class="headerlink" title="Epoll"></a>Epoll</h3><p>epoll在上面的两个基础上做了优化，首先就是不在一次性遍历所有的数据，而是将准备好的事件的node 信息先存放在链表中，每次只需要遍历和返回准备好的数据就行了。然后就是上文是根据文件描述符进行判断是否有事件发生并且修改文件描述符里面的信息，epoll 减少了这一步的操作，因为他记录的是inode table中的数据，这样无论上层如何变化，只要该inode发生变化，就直接触发事件。而且用户每次只需要传入对应的事件到内核态，不在需要将整个数据传入。</p>
 <h1 id="后记"><a href="#后记" class="headerlink" title="后记"></a>后记</h1><p>IO 多路复用里面的复用是指的复用了一个线程或者进程去监听多个IO事件。实现就是通过事件通知，减少不必要的等待。未来如果某天可以直接去读取IO的写缓冲数据或者读缓冲数据不知道回事什么样子的。也就是直接绑定到了网卡上，然后指定各种硬件，算不算是回到了曾经。</p>
@@ -275,6 +275,9 @@
                 </a>
             </div>
             <div class="post-nav-item">
+                <a href="/2023/07/22/netty%E4%B9%8BEpoll/" rel="next" title="netty之Epoll">
+                  netty之Epoll <i class="fa fa-chevron-right"></i>
+                </a>
             </div>
           </div>
     </footer>
