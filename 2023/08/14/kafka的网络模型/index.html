@@ -27,8 +27,9 @@
 <meta property="og:description" content="前言Kafka 是一个高性能的消息队列。在有 Netty 这么成熟的网络扩建之后，kafka 的客户端和服务端都没有使用 netty 作为网络框架，而是自己完全实现了一个网络层的通信。我能找到的的原因上面说 1 是为了更好的性能 2 是因为 kafka 本身引用了各种各样的 jar 包，而这些 jar 包很容易引起冲突，而且网络库是比较底层的库，所以才自己实现了一套。本文就 broker 端的 k">
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/kafka%E7%BD%91%E7%BB%9C%E6%A8%A1%E5%9E%8Bbroker.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/kafka_producer_net.png">
 <meta property="article:published_time" content="2023-08-14T06:27:15.000Z">
-<meta property="article:modified_time" content="2023-08-15T06:53:42.311Z">
+<meta property="article:modified_time" content="2023-08-15T08:28:52.000Z">
 <meta property="article:author" content="mingyouxiaozhu">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="http://image.mingyouxiaozhu.top/blog/kafka%E7%BD%91%E7%BB%9C%E6%A8%A1%E5%9E%8Bbroker.png">
@@ -106,7 +107,7 @@
       <div class="sidebar-panel-container">
         <!--noindex-->
         <div class="post-toc-wrap sidebar-panel">
-            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#Broker-%E7%AB%AF%E7%BD%91%E7%BB%9C%E6%A8%A1%E5%9E%8B"><span class="nav-number">1.1.</span> <span class="nav-text">Broker 端网络模型</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Client-%E7%AB%AF%E7%9A%84%E7%BD%91%E7%BB%9C%E6%A8%A1%E5%9E%8B"><span class="nav-number">1.2.</span> <span class="nav-text">Client 端的网络模型</span></a></li></ol></li></ol></div>
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#Broker-%E7%AB%AF%E7%BD%91%E7%BB%9C%E6%A8%A1%E5%9E%8B"><span class="nav-number">1.1.</span> <span class="nav-text">Broker 端网络模型</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Client-%E7%AB%AF%E7%9A%84%E7%BD%91%E7%BB%9C%E6%A8%A1%E5%9E%8B"><span class="nav-number">1.2.</span> <span class="nav-text">Client 端的网络模型</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%90%8E%E8%AE%B0"><span class="nav-number">2.</span> <span class="nav-text">后记</span></a></li></ol></div>
         </div>
         <!--/noindex-->
 
@@ -187,7 +188,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-08-15 14:53:42" itemprop="dateModified" datetime="2023-08-15T14:53:42+08:00">2023-08-15</time>
+      <time title="修改时间：2023-08-15 16:28:52" itemprop="dateModified" datetime="2023-08-15T16:28:52+08:00">2023-08-15</time>
     </span>
 
   
@@ -206,7 +207,13 @@
 <p><img src="http://image.mingyouxiaozhu.top/blog/kafka%E7%BD%91%E7%BB%9C%E6%A8%A1%E5%9E%8Bbroker.png" alt="kafka网络模型broker"></p>
 <p>和 netty 不同设计的地方，个人主要觉得就是数据处理，Netty 中将每一份数据都通过 ChannelPipeline 进行数据的流转，而在 kafka 中，使用的是 1+N+M 的模型，1 就是一个负责 accepter 的线程，N 则是处理请求的，也就是 processor。M 则是最终处理 Io 请求，也就是 HandlerPool。数据的读取和写入都是通过队列的方式进行流转，读请求放入到 RequestChannel 的 requestQueue 中，handler 异步轮询这个 queue，然后将返回值放入到 processor 的 responseQueue 中。在实现上，RequestChannel 包含了 request 和 response，但是将读写又进行一个区分。为什么读写的做法不一致呢？我个人觉得是因为职责和数据传递的问题，RequestChannel 只是作为 request 和 response 的一个中转站，不做具体的 IO 处理，读请求因为涉及到 handler 的继续处理，所以将它异步放在 RequestChannel 中进行下一步具体的业务处理，但是 response 通过 RequestChannel 以后，不再需要进一步处理，而是直接发送了，所以直接放在 Processor 的发送队列中，直接进行异步处理。隐隐有一种单一职责的处理方式。</p>
 <p>当然，broker 端还有包含一些如网络进行限流等等的处理，这里只涉及到网络模型，不在赘述。</p>
-<h2 id="Client-端的网络模型"><a href="#Client-端的网络模型" class="headerlink" title="Client 端的网络模型"></a>Client 端的网络模型</h2>
+<h2 id="Client-端的网络模型"><a href="#Client-端的网络模型" class="headerlink" title="Client 端的网络模型"></a>Client 端的网络模型</h2><p>上面简单的说了下 kafka 的 broker 在处理数据请求的时候的网络模型，相对比 netty 而言，个人觉得仅仅是在数据传输方面抽象不同，本质上的 reactor 模型还是一样的主从结构。接下来看一下客户端的网络模型，或者说是数据发送的抽象模型。</p>
+<p>kafka 的 客户端网络模型是不同层级处理不同的事情，我在看的时候总有种看 ISO 网络模型的感觉。其中 producer 的网络模型较为清晰和处理逻辑较少，单独拿出来说下。consumer 的网络模型单从网络曾来说和 producer 差不多。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/kafka_producer_net.png" alt="kafka_producer_net"></p>
+<p>kafka 的数据传送过程中，将 NIO 隐藏在最后面，客户端在发送的时候首先是发送到了一个 accumulator 中，然后在 sender 中会从里面打捞数据封装为 ClientRequest 后传送给 NetworkClient 执行 send，在 NetworkClient 中，将数据再次封装为 NetworkSend，通过自己实现 selector 发送数据，在自己实现 selector 中注册的 channel 也是自己封装的后的 KafkaChannel，最后在这个 KafkaChannel 中进一步执行 javaNIO 的数据发送和事件通知。整个过程分层分工很明确。如在 RecordAccumulator 中将发送给相同的 partition 的数据进行 append，增加了一次性发送的数据量，sender 主要处理将封装好了 ProducerBatch 进行区分即将数据应该发送的 partition 和 broker 的 id 进行一个绑定，封装为 request 数据往下传递给 NetworkClient，NetworkClient 会管理连接的状态和是一个 InFlightRequest，主要就是一些链接的状态数据。然后将数据传递给 selector 进行数据传送。在整个传送过程中，基本上客户端传送的数据并没有做其他的处理，都是进行一个分层管理的封装。</p>
+<p>Conusmer 的网络模型大致也是如此分层，按照不同层级处理不同的事件，不过底层仍然是将 NIO 层，Kafka 的 network 层分开处理。后续再聊整个处理逻辑和加深印象。</p>
+<h1 id="后记"><a href="#后记" class="headerlink" title="后记"></a>后记</h1><p>本文只能说浅尝辄止的聊了下 kafka 的网络模型，其实只是觉得 kafka 的 producer 的设计十分切合网络分层设计理念。后面将逐步针对 kafka 的每个模块看下他的系统设计和实现。</p>
+
     </div>
 
     
