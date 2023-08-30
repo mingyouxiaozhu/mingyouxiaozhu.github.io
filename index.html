@@ -114,12 +114,12 @@
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
         <a href="/archives/">
-          <span class="site-state-item-count">8</span>
+          <span class="site-state-item-count">10</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-tags">
-        <span class="site-state-item-count">2</span>
+        <span class="site-state-item-count">4</span>
         <span class="site-state-item-name">标签</span>
       </div>
   </nav>
@@ -136,6 +136,187 @@
     </div>
 
     <div class="main-inner index posts-expand">
+
+    
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/08/24/levelDB-%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="undefined | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          <a href="/2023/08/24/levelDB-%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" class="post-title-link" itemprop="url">levelDB 源码解析之debug环境</a>
+        </h2>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2023-08-24 21:20:12" itemprop="dateCreated datePublished" datetime="2023-08-24T21:20:12+08:00">2023-08-24</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-08-30 10:48:59" itemprop="dateModified" datetime="2023-08-30T10:48:59+08:00">2023-08-30</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+          <h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p>leveldb 是google的大佬写的一个嵌入式的KV数据库。底层是使用的LSM-Tree 索引结构。本文主要涉及levelDB的数据写入，也就是Put 操作。我是个搞java的，C或者C++是不咋会，所以边看边学，可能比较啰嗦。</p>
+<h2 id="Debug环境搭建"><a href="#Debug环境搭建" class="headerlink" title="Debug环境搭建"></a>Debug环境搭建</h2><p>首先拉代码：</p>
+<blockquote>
+<p>git clone <a target="_blank" rel="noopener" href="https://github.com/google/leveldb.git">https://github.com/google/leveldb.git</a></p>
+</blockquote>
+<p>因为源码中的third_party  包含了两个，一个是google的test，还有一个是benchmark。需要拉下来，放到third_party的目录，或者直接在目录里pull</p>
+<blockquote>
+<p>git clone <a target="_blank" rel="noopener" href="https://github.com/google/benchmark.git">https://github.com/google/benchmark.git</a><br>git clone <a target="_blank" rel="noopener" href="https://github.com/google/googletest.git">https://github.com/google/googletest.git</a></p>
+</blockquote>
+<p>按照文档中，需要</p>
+<blockquote>
+<p>mkdir -p build &amp;&amp; cd build<br>cmake -DCMAKE_BUILD_TYPE&#x3D;Release .. &amp;&amp; cmake –build .</p>
+</blockquote>
+<p>但是因为我的目的是在clion debug。所以暂时没有做这一步，而是在源码中新增了一个app目录，下面放我的demo代码：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;cassert&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;iostream&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&quot;include/leveldb/db.h&quot;</span></span></span><br><span class="line"><span class="type">int</span> <span class="title function_">main</span><span class="params">()</span> &#123;</span><br><span class="line">  leveldb::DB *db;</span><br><span class="line">  leveldb::Options options;</span><br><span class="line">  options.create_if_missing = <span class="literal">true</span>;</span><br><span class="line">  leveldb::Status status = leveldb::DB::Open(options, <span class="string">&quot;/home/tuitaking/source/leveldb/file&quot;</span>, &amp;db);</span><br><span class="line">  assert(status.ok());</span><br><span class="line">  <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; <span class="string">&quot;leveldb open success!&quot;</span> &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  <span class="built_in">std</span>::<span class="built_in">string</span> value;</span><br><span class="line">  <span class="built_in">std</span>::<span class="built_in">string</span> key1 = <span class="string">&quot;testkey1&quot;</span>;</span><br><span class="line">  leveldb::Status s = db-&gt;Get(leveldb::ReadOptions(), key1, &amp;value);</span><br><span class="line">  <span class="keyword">if</span> (s.IsNotFound()) &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; <span class="string">&quot;can not found for key:&quot;</span> &lt;&lt; key1 &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">    db-&gt;Put(leveldb::WriteOptions(), key1, <span class="string">&quot;testvalue1&quot;</span>);</span><br><span class="line">  &#125;</span><br><span class="line">  s = db-&gt;Get(leveldb::ReadOptions(), key1, &amp;value);</span><br><span class="line">  <span class="keyword">if</span> (s.ok()) &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; <span class="string">&quot;found key:&quot;</span> &lt;&lt; key1 &lt;&lt; <span class="string">&quot;,value:&quot;</span> &lt;&lt; value &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  s = db-&gt;Delete(leveldb::WriteOptions(), key1);</span><br><span class="line">  <span class="keyword">if</span> (s.ok()) &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; <span class="string">&quot;delete key success which key:&quot;</span> &lt;&lt; key1 &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  s = db-&gt;Get(leveldb::ReadOptions(), key1, &amp;value);</span><br><span class="line">  <span class="keyword">if</span> (s.IsNotFound()) &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; <span class="string">&quot;can not found after delete for key:&quot;</span> &lt;&lt; key1 &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  delete db;</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>然后在CMakeLists.txt 中新增上这个模块</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">add_library(leveldb <span class="string">&quot;&quot;</span> )</span><br><span class="line">target_sources(leveldb</span><br><span class="line">  PRIVATE</span><br><span class="line">    <span class="string">&quot;$&#123;PROJECT_BINARY_DIR&#125;/$&#123;LEVELDB_PORT_CONFIG_DIR&#125;/port_config.h&quot;</span></span><br><span class="line">    <span class="string">&quot;app/main.cpp&quot;</span>     # 加这个位置</span><br><span class="line">    <span class="string">&quot;db/builder.cc&quot;</span></span><br></pre></td></tr></table></figure>
+
+<p>然后将test 也加入</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">leveldb_test(<span class="string">&quot;db/c_test.c&quot;</span>)</span><br><span class="line">leveldb_test(<span class="string">&quot;app/main.cpp&quot;</span>) # 加的这行</span><br></pre></td></tr></table></figure>
+
+<p>然后就可以在clion中看到一个叫main的test，直接可以debug。至于为什么估计需要看cmake 相关的知识，暂时不去管他，总之这样就可以直接debug了。如果是windows，cmake的环境只要做好了，其他的都是类似。在clion中可以直接debug。</p>
+
+      
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+        <div class="post-eof"></div>
+      
+    </footer>
+  </article>
+</div>
+
+
+
+
+    
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/08/15/kafka%E8%A7%A3%E6%9E%90/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="undefined | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h2 class="post-title" itemprop="name headline">
+          <a href="/2023/08/15/kafka%E8%A7%A3%E6%9E%90/" class="post-title-link" itemprop="url">kafka解析</a>
+        </h2>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2023-08-15 22:29:46" itemprop="dateCreated datePublished" datetime="2023-08-15T22:29:46+08:00">2023-08-15</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-08-25 13:57:17" itemprop="dateModified" datetime="2023-08-25T13:57:17+08:00">2023-08-25</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+          <h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p>前面大概说了下kafka的网络模型，还是想将kafka的解析做一个系列。我不是一个很会写故事的人，有时候感觉是意识流。所以这次主要是按照kafka的文档中的<a target="_blank" rel="noopener" href="https://kafka.apache.org/32/documentation.html#design">design</a>,中文翻译<a target="_blank" rel="noopener" href="https://www.oschina.net/translate/kafka-design">地址</a>。按照这个设计需要考虑的进行分析。我写这个的时候刚好是kafka实现了自己的raft，基于的版本是3.3.1</p>
+          <!--noindex-->
+            <div class="post-button">
+              <a class="btn" href="/2023/08/15/kafka%E8%A7%A3%E6%9E%90/#more" rel="contents">
+                阅读全文 &raquo;
+              </a>
+            </div>
+          <!--/noindex-->
+        
+      
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+        <div class="post-eof"></div>
+      
+    </footer>
+  </article>
+</div>
+
+
+
 
     
 
@@ -646,7 +827,7 @@
     </span>
       <header class="post-header">
         <h2 class="post-title" itemprop="name headline">
-          <a href="/2023/07/11/%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97/" class="post-title-link" itemprop="url">消息队列之磁盘读写</a>
+          <a href="/2023/07/11/%E6%B6%88%E6%81%AF%E9%98%9F%E5%88%97/" class="post-title-link" itemprop="url">磁盘读写</a>
         </h2>
 
         <div class="post-meta-container">
@@ -664,7 +845,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-07-13 19:56:30" itemprop="dateModified" datetime="2023-07-13T19:56:30+08:00">2023-07-13</time>
+      <time title="修改时间：2023-08-16 17:41:00" itemprop="dateModified" datetime="2023-08-16T17:41:00+08:00">2023-08-16</time>
     </span>
 
   
