@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha256-HtsXJanqjKTc8vVQjO4YMhiqFoXkfBsjBWcX91T1jr8=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"example.com","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.17.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="前言Leveldb 作为一个 kv 数据库，使用的 lsm-tree，一句话解释 lsm-tree 就是将数据按照字符排序。首先将数据写入内存，然后将数据刷入磁盘，定时合并文件。在每个文件头部记录下当前最小最大的 key，然后使用 bloom 记录是否存在 key，查询的时候根据二分查找等方式进行数据查找。数据是紧凑的写在内存或磁盘上的，所以每条数据都会记录当前值的长度和具体的值形如：[key_l">
+<meta property="og:type" content="article">
+<meta property="og:title" content="levelDB之Vrint">
+<meta property="og:url" content="http://example.com/2023/08/30/levelDB%E4%B9%8Bcoding/index.html">
+<meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
+<meta property="og:description" content="前言Leveldb 作为一个 kv 数据库，使用的 lsm-tree，一句话解释 lsm-tree 就是将数据按照字符排序。首先将数据写入内存，然后将数据刷入磁盘，定时合并文件。在每个文件头部记录下当前最小最大的 key，然后使用 bloom 记录是否存在 key，查询的时候根据二分查找等方式进行数据查找。数据是紧凑的写在内存或磁盘上的，所以每条数据都会记录当前值的长度和具体的值形如：[key_l">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2023-08-30T02:53:59.000Z">
+<meta property="article:modified_time" content="2023-08-31T03:03:30.937Z">
+<meta property="article:author" content="mingyouxiaozhu">
+<meta name="twitter:card" content="summary">
+
+
+<link rel="canonical" href="http://example.com/2023/08/30/levelDB%E4%B9%8Bcoding/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/08/30/levelDB%E4%B9%8Bcoding/","path":"2023/08/30/levelDB之coding/","title":"levelDB之Vrint"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>levelDB之Vrint | mingyouxiaozhu's blog</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">mingyouxiaozhu's blog</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%B7%E4%BD%93%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.1.</span> <span class="nav-text">具体实现</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E7%BC%96%E7%A0%81%E5%85%B7%E4%BD%93%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.1.0.1.</span> <span class="nav-text">编码具体实现</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#32-%E4%BD%8D%E6%95%B4%E5%9E%8B"><span class="nav-number">1.1.0.1.1.</span> <span class="nav-text">32 位整型</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#64-%E4%BD%8D%E6%95%B4%E5%BD%A2"><span class="nav-number">1.1.0.1.2.</span> <span class="nav-text">64 位整形</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%A7%A3%E7%A0%81%E5%85%B7%E4%BD%93%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.1.0.2.</span> <span class="nav-text">解码具体实现</span></a></li></ol></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">2.</span> <span class="nav-text">总结</span></a></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">mingyouxiaozhu</p>
+  <div class="site-description" itemprop="description">enjoy life ,enjoy coding</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">11</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/08/30/levelDB%E4%B9%8Bcoding/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="levelDB之Vrint | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          levelDB之Vrint
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2023-08-30 10:53:59" itemprop="dateCreated datePublished" datetime="2023-08-30T10:53:59+08:00">2023-08-30</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-08-31 11:03:30" itemprop="dateModified" datetime="2023-08-31T11:03:30+08:00">2023-08-31</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p>Leveldb 作为一个 kv 数据库，使用的 lsm-tree，一句话解释 lsm-tree 就是将数据按照字符排序。首先将数据写入内存，然后将数据刷入磁盘，定时合并文件。在每个文件头部记录下当前最小最大的 key，然后使用 bloom 记录是否存在 key，查询的时候根据二分查找等方式进行数据查找。<br>数据是紧凑的写在内存或磁盘上的，所以每条数据都会记录当前值的长度和具体的值形如：[key_length][key][value_length][value]，如 key 为 key_123,value 为 value_123,记录方式就是[7][key_123][9][value_123]。一个 32 位整型的空间一般是 4 个字节，Leveldb 就是觉得这个 4 个字节实在是太多了，如上文，当前的 key 是 7，其实只需要一个字节就可以表示，所以在这个上面 Leveldb 使用了 Varint。具体在<code>leveldb/util/coding.cc</code>和<code>leveldb/util/coding.h</code>中实现，本文就是对其中的实现做一个简单的介绍和分析。</p>
+<h2 id="具体实现"><a href="#具体实现" class="headerlink" title="具体实现"></a>具体实现</h2><p>Leveldb 中上文提到的两个源码文件中，包含了两种，一种是 Varint 和 Fixed，包含了 32 位和 64 位，也就是 32 位整型和 64 位整型 的值。核心都是使用 char 数组来表示 32 位整型和 64 位整型。</p>
+<h4 id="编码具体实现"><a href="#编码具体实现" class="headerlink" title="编码具体实现"></a>编码具体实现</h4><p>下面是编码方法列表</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">char</span>* <span class="title function_">EncodeVarint32</span><span class="params">(<span class="type">char</span>* dst, <span class="type">uint32_t</span> value)</span>;</span><br><span class="line"><span class="type">char</span>* <span class="title function_">EncodeVarint64</span><span class="params">(<span class="type">char</span>* dst, <span class="type">uint64_t</span> value)</span>;</span><br><span class="line"><span class="comment">// 在coding.h 文件中直接实现的内联函数</span></span><br><span class="line"><span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">EncodeFixed32</span><span class="params">(<span class="type">char</span>* dst, <span class="type">uint32_t</span> value)</span>;</span><br><span class="line"><span class="keyword">inline</span> <span class="type">void</span> <span class="title function_">EncodeFixed64</span><span class="params">(<span class="type">char</span>* dst, <span class="type">uint64_t</span> value)</span>;</span><br></pre></td></tr></table></figure>
+
+<p>为了将 32 位整型或者 64 位整型 使用 char 数据记录，肯定需要对 int 的 4 位字节分别存储，也就是每次移动 8 位，为了标识当前字节处于整个字节的位置，还需要预留一个标识符，所以每一个 char 最多有 7 位标识一个 int，2 的 7 次方，也就是一个 char 最多标识 128 的数据。也就是说如果超过了 2 的 28 次方，可能需要额外的字节来标识。也就是说 int 值最多需要 5 个字节来表示。对应的 64 位整型类型则需要使用 64&#x2F;7 +1 也就是 10 个字节来标识。</p>
+<h5 id="32-位整型"><a href="#32-位整型" class="headerlink" title="32 位整型"></a>32 位整型</h5><p>下面的代码核心其实就是分为 5 个字节如何存储，每一个 if 就是一个多出一个字节。</p>
+<blockquote>
+<p>*(ptr++) &#x3D; v;的写法结果：</p>
+<ol>
+<li>从 <code>ptr</code> 指向的地址获取一个指向的值。</li>
+<li>将变量 <code>v</code> 的值赋给该地址处。</li>
+<li>将 <code>ptr</code> 的值增加 1，使其指向下一个地址。</li>
+</ol>
+</blockquote>
+<p>代码如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">char* EncodeVarint32(char* dst, uint32_t v) &#123;</span><br><span class="line">  // Operate on characters as unsigneds</span><br><span class="line">  uint8_t* ptr = reinterpret_cast&lt;uint8_t*&gt;(dst);// 将当前指针变成uint8_t类型的指针</span><br><span class="line">  static const int B = 128; // 2的 七次方，确1000 0000</span><br><span class="line">  if (v &lt; (1 &lt;&lt; 7)) &#123;</span><br><span class="line">    *(ptr++) = v; // 如果当前的值小于2^7，则直接将值写入指针，最大标识0111 1111 即127</span><br><span class="line">  &#125; else if (v &lt; (1 &lt;&lt; 14)) &#123;</span><br><span class="line">    *(ptr++) = v | B; // 如果值大于2^7，小于2^14，则首先小后七位写入第一个字节，也就是说是小端存储，此时该字节首位是1，因为B 1000 0000  使用或的关系只是将后七位和原值相等，首位赋值1</span><br><span class="line">    *(ptr++) = v &gt;&gt; 7; // 将剩下的值写入，此时首位为0</span><br><span class="line">  &#125; else if (v &lt; (1 &lt;&lt; 21)) &#123; // 大于2^14小于2^21,和上文类似</span><br><span class="line">    *(ptr++) = v | B;</span><br><span class="line">    *(ptr++) = (v &gt;&gt; 7) | B;</span><br><span class="line">    *(ptr++) = v &gt;&gt; 14;</span><br><span class="line">  &#125; else if (v &lt; (1 &lt;&lt; 28)) &#123;</span><br><span class="line">    *(ptr++) = v | B;</span><br><span class="line">    *(ptr++) = (v &gt;&gt; 7) | B;</span><br><span class="line">    *(ptr++) = (v &gt;&gt; 14) | B;</span><br><span class="line">    *(ptr++) = v &gt;&gt; 21;</span><br><span class="line">  &#125; else &#123;</span><br><span class="line">    *(ptr++) = v | B;</span><br><span class="line">    *(ptr++) = (v &gt;&gt; 7) | B;</span><br><span class="line">    *(ptr++) = (v &gt;&gt; 14) | B;</span><br><span class="line">    *(ptr++) = (v &gt;&gt; 21) | B;</span><br><span class="line">    *(ptr++) = v &gt;&gt; 28;</span><br><span class="line">  &#125;</span><br><span class="line">  return reinterpret_cast&lt;char*&gt;(ptr); // 将值转换会原来的位置</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>举例说明下面的各个字节标识：</p>
+<table>
+<thead>
+<tr>
+<th align="center">原始值</th>
+<th align="center">32 位二进制</th>
+<th align="center">转换后</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">1</td>
+<td align="center">00000000 00000000 00000000 00000001</td>
+<td align="center">00000001</td>
+</tr>
+<tr>
+<td align="center">129</td>
+<td align="center">00000000 00000000 00000000 10000001</td>
+<td align="center">10000001 00000001</td>
+</tr>
+<tr>
+<td align="center">65537</td>
+<td align="center">00000000 00000001 00000000 00000001</td>
+<td align="center">10000001 10000000 00000100</td>
+</tr>
+</tbody></table>
+<p>上面分别为 1，2^7+1 ，2^16+1,也就是分别需要 1 字节，2 字节和 3 字节的数据存储。所以 varint32 的值有以下特征：</p>
+<ul>
+<li>小端存储</li>
+<li>如果当前 char 的最高位是 1 ，则说明当前的值没有结束，一直到最高位为 0 的 char</li>
+</ul>
+<h5 id="64-位整形"><a href="#64-位整形" class="headerlink" title="64 位整形"></a>64 位整形</h5><p>64 位和 32 位基本上没有区别：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">char</span>* <span class="title function_">EncodeVarint64</span><span class="params">(<span class="type">char</span>* dst, <span class="type">uint64_t</span> v)</span> &#123;</span><br><span class="line">  <span class="type">static</span> <span class="type">const</span> <span class="type">int</span> B = <span class="number">128</span>;</span><br><span class="line">  <span class="type">uint8_t</span>* ptr = reinterpret_cast&lt;<span class="type">uint8_t</span>*&gt;(dst);</span><br><span class="line">  <span class="keyword">while</span> (v &gt;= B) &#123;</span><br><span class="line">    *(ptr++) = v | B;</span><br><span class="line">    v &gt;&gt;= <span class="number">7</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  *(ptr++) = static_cast&lt;<span class="type">uint8_t</span>&gt;(v);</span><br><span class="line">  <span class="keyword">return</span> reinterpret_cast&lt;<span class="type">char</span>*&gt;(ptr);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>实现上只是使用循环的方式，其他的都是一样的。这里就不赘述了。</p>
+<h4 id="解码具体实现"><a href="#解码具体实现" class="headerlink" title="解码具体实现"></a>解码具体实现</h4><p>相对编码，解码里面提供了较为多方法，包含了和类外一个 LevelDB 比较重要的对象 Slice 的交互，这里先不看这个 Slice 的交互，只看解码的部分。</p>
+<p>下面是我觉得两个比较核心的方法：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Pointer-based variants of GetVarint...  These either store a value</span></span><br><span class="line"><span class="comment">// in *v and return a pointer just past the parsed value, or return</span></span><br><span class="line"><span class="comment">// nullptr on error.  These routines only look at bytes in the range</span></span><br><span class="line"><span class="comment">// [p..limit-1]</span></span><br><span class="line"><span class="comment">// 传入的待解码char开始指针p,待解码char结束指针，最后值写入的指针v。看方法参数可以看到，一般情况下都是在某个char* 类型的数据上进行顺序读取来获取数据，也就是p 和limit 应该是属于一个char* 的不同位置的指针，他的返回值是指向当前值结尾指针的下一个指针。如果出错，则返回nullptr</span></span><br><span class="line"><span class="type">const</span> <span class="type">char</span>* <span class="title function_">GetVarint32Ptr</span><span class="params">(<span class="type">const</span> <span class="type">char</span>* p, <span class="type">const</span> <span class="type">char</span>* limit, <span class="type">uint32_t</span>* v)</span>;</span><br><span class="line"><span class="type">const</span> <span class="type">char</span>* <span class="title function_">GetVarint64Ptr</span><span class="params">(<span class="type">const</span> <span class="type">char</span>* p, <span class="type">const</span> <span class="type">char</span>* limit, <span class="type">uint64_t</span>* v)</span>;</span><br></pre></td></tr></table></figure>
+
+<p>在实现上分为两种情况：</p>
+<ol>
+<li><p>当前的值小于 128，即传入的 p 的第一个字节为 0，也就是上文编码中说的，如果首位为 0 ，则说明后续都没有数据了。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">inline</span> <span class="type">const</span> <span class="type">char</span>* <span class="title function_">GetVarint32Ptr</span><span class="params">(<span class="type">const</span> <span class="type">char</span>* p, <span class="type">const</span> <span class="type">char</span>* limit,</span></span><br><span class="line"><span class="params">                                  <span class="type">uint32_t</span>* value)</span> &#123;</span><br><span class="line">  <span class="keyword">if</span> (p &lt; limit) &#123; <span class="comment">//确保p是在limit 前面的</span></span><br><span class="line">    <span class="type">uint32_t</span> result = *(reinterpret_cast&lt;<span class="type">const</span> <span class="type">uint8_t</span>*&gt;(p));</span><br><span class="line">    <span class="keyword">if</span> ((result &amp; <span class="number">128</span>) == <span class="number">0</span>) &#123; <span class="comment">// p的第一个字节为0，说明当前值7位就可以标识，字节返回。</span></span><br><span class="line">      *value = result;</span><br><span class="line">      <span class="keyword">return</span> p + <span class="number">1</span>; <span class="comment">// 返回当前解码后值的后一个字节</span></span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> GetVarint32PtrFallback(p, limit, value);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></li>
+</ol>
+<p>如果超过 7 位，则进入到 GetVarint32PtrFallback 方法中：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> <span class="type">char</span>* <span class="title function_">GetVarint32PtrFallback</span><span class="params">(<span class="type">const</span> <span class="type">char</span>* p, <span class="type">const</span> <span class="type">char</span>* limit,</span></span><br><span class="line"><span class="params">                                   <span class="type">uint32_t</span>* value)</span> &#123;</span><br><span class="line">  <span class="type">uint32_t</span> result = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 最多执行5次</span></span><br><span class="line">  <span class="keyword">for</span> (<span class="type">uint32_t</span> shift = <span class="number">0</span>; shift &lt;= <span class="number">28</span> &amp;&amp; p &lt; limit; shift += <span class="number">7</span>) &#123;</span><br><span class="line">    <span class="type">uint32_t</span> byte = *(reinterpret_cast&lt;<span class="type">const</span> <span class="type">uint8_t</span>*&gt;(p));</span><br><span class="line">    p++; <span class="comment">// 移动p的指针</span></span><br><span class="line">    <span class="keyword">if</span> (byte &amp; <span class="number">128</span>) &#123; <span class="comment">// 如果当前char的首位是1，说明后续还有值</span></span><br><span class="line">      <span class="comment">// More bytes are present</span></span><br><span class="line">        <span class="comment">// 取当前值的后7位，并且移动shift</span></span><br><span class="line">      result |= ((byte &amp; <span class="number">127</span>) &lt;&lt; shift);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// 当前已经到尾部字节，将值写入即可</span></span><br><span class="line">      result |= (byte &lt;&lt; shift);</span><br><span class="line">      *value = result;</span><br><span class="line">      <span class="keyword">return</span> reinterpret_cast&lt;<span class="type">const</span> <span class="type">char</span>*&gt;(p);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">    <span class="comment">// 出现如limit&gt;p这种情况，字节返回nullptr</span></span><br><span class="line">  <span class="keyword">return</span> nullptr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>64 位的解码基本上和 32 位一样，只是移动次数变成了 10 次</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> <span class="type">char</span>* <span class="title function_">GetVarint64Ptr</span><span class="params">(<span class="type">const</span> <span class="type">char</span>* p, <span class="type">const</span> <span class="type">char</span>* limit, <span class="type">uint64_t</span>* value)</span> &#123;</span><br><span class="line">  <span class="type">uint64_t</span> result = <span class="number">0</span>;</span><br><span class="line">  <span class="keyword">for</span> (<span class="type">uint32_t</span> shift = <span class="number">0</span>; shift &lt;= <span class="number">63</span> &amp;&amp; p &lt; limit; shift += <span class="number">7</span>) &#123;</span><br><span class="line">    <span class="type">uint64_t</span> byte = *(reinterpret_cast&lt;<span class="type">const</span> <span class="type">uint8_t</span>*&gt;(p));</span><br><span class="line">    p++;</span><br><span class="line">    <span class="keyword">if</span> (byte &amp; <span class="number">128</span>) &#123;</span><br><span class="line">      <span class="comment">// More bytes are present</span></span><br><span class="line">      result |= ((byte &amp; <span class="number">127</span>) &lt;&lt; shift);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      result |= (byte &lt;&lt; shift);</span><br><span class="line">      *value = result;</span><br><span class="line">      <span class="keyword">return</span> reinterpret_cast&lt;<span class="type">const</span> <span class="type">char</span>*&gt;(p);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> nullptr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>leveldb 针对 32 位和 64 位的整形进行了优化，能够节约空间。个人觉得这么做的主要目的是因为我们的 key 或者 value 的值长度一般不会很大，很少人会使用 2^32 个字节来作为 key 存储。所以这么做积少成多，确实能够节约不少的空间。使用 0,1 判断是否到数据尾部，确实很秀。</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2023/08/24/levelDB-%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" rel="prev" title="levelDB 源码解析之debug环境">
+                  <i class="fa fa-chevron-left"></i> levelDB 源码解析之debug环境
+                </a>
+            </div>
+            <div class="post-nav-item">
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2023</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">mingyouxiaozhu</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>
