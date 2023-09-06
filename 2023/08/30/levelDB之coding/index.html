@@ -21,13 +21,13 @@
 
     <meta name="description" content="前言Leveldb 作为一个 kv 数据库，使用的 lsm-tree，一句话解释 lsm-tree 就是将数据按照字符排序。首先将数据写入内存，然后将数据刷入磁盘，定时合并文件。在每个文件头部记录下当前最小最大的 key，然后使用 bloom 记录是否存在 key，查询的时候根据二分查找等方式进行数据查找。数据是紧凑的写在内存或磁盘上的，所以每条数据都会记录当前值的长度和具体的值形如：[key_l">
 <meta property="og:type" content="article">
-<meta property="og:title" content="levelDB之Vrint">
+<meta property="og:title" content="levelDB之Varint">
 <meta property="og:url" content="http://example.com/2023/08/30/levelDB%E4%B9%8Bcoding/index.html">
 <meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
 <meta property="og:description" content="前言Leveldb 作为一个 kv 数据库，使用的 lsm-tree，一句话解释 lsm-tree 就是将数据按照字符排序。首先将数据写入内存，然后将数据刷入磁盘，定时合并文件。在每个文件头部记录下当前最小最大的 key，然后使用 bloom 记录是否存在 key，查询的时候根据二分查找等方式进行数据查找。数据是紧凑的写在内存或磁盘上的，所以每条数据都会记录当前值的长度和具体的值形如：[key_l">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="2023-08-30T02:53:59.000Z">
-<meta property="article:modified_time" content="2023-08-31T03:03:30.937Z">
+<meta property="article:modified_time" content="2023-09-04T01:37:15.637Z">
 <meta property="article:author" content="mingyouxiaozhu">
 <meta name="twitter:card" content="summary">
 
@@ -36,10 +36,10 @@
 
 
 
-<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/08/30/levelDB%E4%B9%8Bcoding/","path":"2023/08/30/levelDB之coding/","title":"levelDB之Vrint"}</script>
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/08/30/levelDB%E4%B9%8Bcoding/","path":"2023/08/30/levelDB之coding/","title":"levelDB之Varint"}</script>
 
 <script class="next-config" data-name="calendar" type="application/json">""</script>
-<title>levelDB之Vrint | mingyouxiaozhu's blog</title>
+<title>levelDB之Varint | mingyouxiaozhu's blog</title>
   
 
 
@@ -117,12 +117,12 @@
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
         <a href="/archives/">
-          <span class="site-state-item-count">11</span>
+          <span class="site-state-item-count">18</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-tags">
-        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-count">5</span>
         <span class="site-state-item-name">标签</span>
       </div>
   </nav>
@@ -162,12 +162,12 @@
     </span>
 
     <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
-      <meta itemprop="name" content="levelDB之Vrint | mingyouxiaozhu's blog">
+      <meta itemprop="name" content="levelDB之Varint | mingyouxiaozhu's blog">
       <meta itemprop="description" content="">
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
-          levelDB之Vrint
+          levelDB之Varint
         </h1>
 
         <div class="post-meta-container">
@@ -185,7 +185,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-08-31 11:03:30" itemprop="dateModified" datetime="2023-08-31T11:03:30+08:00">2023-08-31</time>
+      <time title="修改时间：2023-09-04 09:37:15" itemprop="dateModified" datetime="2023-09-04T09:37:15+08:00">2023-09-04</time>
     </span>
 
   
@@ -278,11 +278,14 @@
 
           <div class="post-nav">
             <div class="post-nav-item">
-                <a href="/2023/08/24/levelDB-%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" rel="prev" title="levelDB 源码解析之debug环境">
-                  <i class="fa fa-chevron-left"></i> levelDB 源码解析之debug环境
+                <a href="/2023/08/24/levelDB-%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/" rel="prev" title="levelDB 源码解析之debug环境和数据写入">
+                  <i class="fa fa-chevron-left"></i> levelDB 源码解析之debug环境和数据写入
                 </a>
             </div>
             <div class="post-nav-item">
+                <a href="/2023/08/30/LevelDB%E6%BA%90%E7%A0%81%E5%AD%A6%E4%B9%A0%E4%B9%8B%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/" rel="next" title="LevelDB源码学习之内存管理">
+                  LevelDB源码学习之内存管理 <i class="fa fa-chevron-right"></i>
+                </a>
             </div>
           </div>
     </footer>

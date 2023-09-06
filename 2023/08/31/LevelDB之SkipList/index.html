@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha256-HtsXJanqjKTc8vVQjO4YMhiqFoXkfBsjBWcX91T1jr8=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"example.com","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.17.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="前言在数据结构中，树一直被很多系统钟爱，如 mysql 的 innodb 使用的是 B+ 数，在 java 中 Map 的 hash 碰撞后，如果链表超过 8 会切换为红黑树。树结构的好处个人认为是在写入的时候对数据进行一个预处理，而且这个出力和子节点的数量相关，在写入的时候按照规则插入，能够在查询的时候有效的查询对应的子树，从而达到查询时间为 LogN 。如红黑树，红黑树的结构是异构化的 23">
+<meta property="og:type" content="article">
+<meta property="og:title" content="LevelDB之SkipList">
+<meta property="og:url" content="http://example.com/2023/08/31/LevelDB%E4%B9%8BSkipList/index.html">
+<meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
+<meta property="og:description" content="前言在数据结构中，树一直被很多系统钟爱，如 mysql 的 innodb 使用的是 B+ 数，在 java 中 Map 的 hash 碰撞后，如果链表超过 8 会切换为红黑树。树结构的好处个人认为是在写入的时候对数据进行一个预处理，而且这个出力和子节点的数量相关，在写入的时候按照规则插入，能够在查询的时候有效的查询对应的子树，从而达到查询时间为 LogN 。如红黑树，红黑树的结构是异构化的 23">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230831163355393.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16935493045545.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16935514661062.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/image-20230901144301435.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16935584519268.png">
+<meta property="article:published_time" content="2023-08-31T07:56:31.000Z">
+<meta property="article:modified_time" content="2023-09-04T01:39:11.358Z">
+<meta property="article:author" content="mingyouxiaozhu">
+<meta property="article:tag" content="leveldb">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://image.mingyouxiaozhu.top/blog/image-20230831163355393.png">
+
+
+<link rel="canonical" href="http://example.com/2023/08/31/LevelDB%E4%B9%8BSkipList/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/08/31/LevelDB%E4%B9%8BSkipList/","path":"2023/08/31/LevelDB之SkipList/","title":"LevelDB之SkipList"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>LevelDB之SkipList | mingyouxiaozhu's blog</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">mingyouxiaozhu's blog</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#SkipList-%E5%8E%9F%E7%90%86"><span class="nav-number">1.1.</span> <span class="nav-text">SkipList 原理</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#SkipList-%E7%9A%84%E6%93%8D%E4%BD%9C"><span class="nav-number">1.1.1.</span> <span class="nav-text">SkipList 的操作</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%9F%A5%E8%AF%A2%E6%93%8D%E4%BD%9C"><span class="nav-number">1.1.1.1.</span> <span class="nav-text">查询操作</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%8F%92%E5%85%A5%E5%92%8C%E5%88%A0%E9%99%A4"><span class="nav-number">1.1.1.2.</span> <span class="nav-text">插入和删除</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%8F%92%E5%85%A5"><span class="nav-number">1.1.1.2.1.</span> <span class="nav-text">插入</span></a><ol class="nav-child"><li class="nav-item nav-level-6"><a class="nav-link" href="#%E9%9A%8F%E6%9C%BA%E7%AE%97%E6%B3%95"><span class="nav-number">1.1.1.2.1.1.</span> <span class="nav-text">随机算法</span></a></li></ol></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%88%A0%E9%99%A4"><span class="nav-number">1.1.1.2.2.</span> <span class="nav-text">删除</span></a></li></ol></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E8%87%AA%E5%B7%B1%E5%86%99%E4%B8%AA-SkipList"><span class="nav-number">1.1.1.3.</span> <span class="nav-text">自己写个 SkipList</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#LevelDB-%E7%9A%84-SkipList-%E5%AE%9E%E7%8E%B0"><span class="nav-number">1.2.</span> <span class="nav-text">LevelDB 的 SkipList 实现</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#random-%E6%96%B9%E6%B3%95"><span class="nav-number">1.2.0.1.</span> <span class="nav-text">random 方法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="nav-number">1.2.0.2.</span> <span class="nav-text">数据结构</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%9F%A5%E8%AF%A2"><span class="nav-number">1.2.0.2.1.</span> <span class="nav-text">查询</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E6%8F%92%E5%85%A5-1"><span class="nav-number">1.2.0.2.2.</span> <span class="nav-text">插入</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E5%88%A0%E9%99%A4-1"><span class="nav-number">1.2.0.2.3.</span> <span class="nav-text">删除</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#%E8%BF%AD%E4%BB%A3%E6%96%B9%E5%BC%8F"><span class="nav-number">1.2.0.2.4.</span> <span class="nav-text">迭代方式</span></a></li></ol></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">1.3.</span> <span class="nav-text">总结</span></a></li></ol></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">mingyouxiaozhu</p>
+  <div class="site-description" itemprop="description">enjoy life ,enjoy coding</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">18</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/08/31/LevelDB%E4%B9%8BSkipList/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="LevelDB之SkipList | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          LevelDB之SkipList
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+
+      <time title="创建时间：2023-08-31 15:56:31" itemprop="dateCreated datePublished" datetime="2023-08-31T15:56:31+08:00">2023-08-31</time>
+    </span>
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar-check"></i>
+      </span>
+      <span class="post-meta-item-text">更新于</span>
+      <time title="修改时间：2023-09-04 09:39:11" itemprop="dateModified" datetime="2023-09-04T09:39:11+08:00">2023-09-04</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p>在数据结构中，树一直被很多系统钟爱，如 mysql 的 innodb 使用的是 B+ 数，在 java 中 Map 的 hash 碰撞后，如果链表超过 8 会切换为红黑树。树结构的好处个人认为是在写入的时候对数据进行一个预处理，而且这个出力和子节点的数量相关，在写入的时候按照规则插入，能够在查询的时候有效的查询对应的子树，从而达到查询时间为 LogN 。如红黑树，红黑树的结构是异构化的 23 树，能够确保左右子树的高度差维持在 1，有效保证数据平衡，但是红黑树的实现比较复杂，插入过程涉及到树的重平衡。后来出现了一种链表的结构，称之为跳表即 SkipList，他是由 William Pugh 在<a target="_blank" rel="noopener" href="https://15721.courses.cs.cmu.edu/spring2018/papers/08-oltpindexes1/pugh-skiplists-cacm1990.pdf">Skip Lists: A Probabilistic Alternative to Balanced Trees</a>提出的一种平衡性很好的数据结构，这种数据结构是使用空间换时间，实现较为简单，查询复杂度和树结构接近。在 redis 和 leveldb 中都有使用。本文会介绍下 leveldb 中的 SkipList 的实现。</p>
+<h2 id="SkipList-原理"><a href="#SkipList-原理" class="headerlink" title="SkipList 原理"></a>SkipList 原理</h2><p>在某种意义上，链表可以算得上是一种特殊的树，只有一个分支的树。一般情况下分为单向链表和双向链表。单向链表里面的节点会有个指针指向下一个节点，双向链表包含两个指针，一个指向指向他的节点（prev），一个指向下一个节点。SkipList 是单向链表，但是不止一个链表，而是使用 n 个链表分层，每一层中的 node 指向的下一个节点各不相同。后续的说明主要是针对上文提到的论文中的一个小摘抄：</p>
+<p>论文中提到（第一节），二叉树在随机大小写入的情况下效率很高，但是如果是顺序大小写入则表现的比较一般，这个是因为二叉树尤其是平衡二叉树需要对数结构进行一个平衡引起的。</p>
+<p>SkipList 是一种平衡树的概率性的替代品，这里概率性个人觉得主要是上面提到的随机大小数据写入过程平衡树效率比顺序写高，就是通过另外的方式实现了这种顺序写变为随机。论文中提到，250 个元素的 skiplist 需要查询查过 3 次的概率不到百万分之一。</p>
+<p>论文中还提到，skiplist 在实现上比较容易，而且使用的是概率性的计算来保持数据的平衡，在空间上平均每个节点可能只需要 1+1&#x2F;3 个指针。</p>
+<p>SkipList 还有一个好处就对锁范围的控制上，在平衡二叉树或者红黑树，在并发操作的情况下，特定的时候如需要修改 Root 节点的属性，可能需要对整棵树都加锁。但是 SkipList 里面可以针对局部节点进行加锁，在并发情况下实现比较好。</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/image-20230831163355393.png" alt="image-20230831163355393"></p>
+<p>上图选自论文中的 figure1。</p>
+<p>n 标识当前链表的长度，且链表是顺序存储的。</p>
+<ol>
+<li>在初始阶段，当前的单向链表查询可能需要遍历 n</li>
+<li>如果将可以记录每间隔个节点创建连接，则可以将查找的时间缩小为 n&#x2F;2+1。按照最上层比较，可以找到当前查询值的前一个节点，所以是 n&#x2F;2+1</li>
+<li>还可以在 2 的基础上，每间隔一个继续创建一个连接，则时间缩小为 n&#x2F;4+2。首先最上层找，此时是 n&#x2F;4，然后在第二层，因为当前中间有 b 层，而且 b 层此时只有 1 个节点，当前值要么大于这个值要么小于，所以需要 2 次就可以找到当前值。</li>
+<li>现在将具有 k 个指向其他指针的节点称之为 level K 节点，则说明第 2^i 节点后面有 2^i 个节点，则节点分布在一个比较均匀的数据中。level0 0 节点有 100%个节点，有 50% 的节点在 level1,有 25% 在 level2，以此类推。</li>
+<li>但是如果我们随机选择 level1 层的节点，可能会出现上图 e 中情况，也就是高层分配不均匀，如 6 虽然在第四层，但是他却处于第二个位置。</li>
+</ol>
+<p>可以看到，SkipList 的核心其实是这个层数的确定，如果是按照十分恰当的分配节点中的每一个节点的 level，他的时间复杂度就是 logN。</p>
+<p>这个上升当前节点的 level 的时机是影响链表查询的关键。</p>
+<h3 id="SkipList-的操作"><a href="#SkipList-的操作" class="headerlink" title="SkipList 的操作"></a>SkipList 的操作</h3><p>主要设计到增删查：</p>
+<ol>
+<li><p>Search 操作返回目标关键字所关联的 value，如果没有该关键字则返回 failure</p>
+</li>
+<li><p>Insert 操作对目标关键字更新 value，如果目标关键字不存在，则将关键字插入</p>
+</li>
+<li><p>Delete 操作删除目标关键字。</p>
+</li>
+</ol>
+<h4 id="查询操作"><a href="#查询操作" class="headerlink" title="查询操作"></a>查询操作</h4><p>查询操作是删除和插入的基础，因为每一层都是单向链表，所以必须要找到插入的父节点才行，如果当前节点的 level 较高，可能还需要将查询过程中的每一层的父节点都记录下来。</p>
+<p>伪代码如下：（论文 figure2）</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16935493045545.png" alt="img"></p>
+<p>伪代码是搜索一个 searchKey 是否在 skiplist 中。具体步骤如下：</p>
+<ol>
+<li>将 x 初始话为 skiplist 的头节点</li>
+<li>进入第一次循环，循环是从当前最大的 level 到 level1</li>
+<li>然后进入第二层循环，在当前层的 forword 对象中找到 key 值不小于当前 searchkey 的值</li>
+<li>跳出 3 的循环后，此时已经找到本层不小于 searchkey 的值，继续往下一层找。如果找到了等于当前 searchkey 的值，则返回值存储的 value。</li>
+<li>如果从 maxlevel 到 1 都没有这个值，返回一个 failture。</li>
+</ol>
+<p>查询就是从最上层往下查询的过程。</p>
+<h4 id="插入和删除"><a href="#插入和删除" class="headerlink" title="插入和删除"></a>插入和删除</h4><p>在上文中，我们查询不到这个值就返回一个 failture，但是其实也可以返回当前找到的 level1 层的值，因为这个值是当前 skiplist 中不小于 searchKey 的值。如果说是插入，那么也应该是插入到这个值的后面。但是因为涉及到 level 的变化，所以查询过程中需要将当前查到的每一层不小于当前的值都查出来，然后随机一个当前值的 level，然后将存储的每一层 level 都和当前 level 进行一个绑定。删除也类似。</p>
+<p>插入和删除图形化为:</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16935514661062.png" alt="img"></p>
+<p>后文根据论文中的伪代码介绍下操作</p>
+<h5 id="插入"><a href="#插入" class="headerlink" title="插入"></a>插入</h5><p>插入的伪代码如下：论文 figure4</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/image-20230901144301435.png" alt="image-20230901144301435"></p>
+<ol>
+<li><p>定义一个变量 update，用来存储上文提到的每一层中不小于当前值的 Node。</p>
+</li>
+<li><p>查找当前的 key 和将每一层比较的结果赋值到 update 中。</p>
+</li>
+<li><p>如果查到当前值了，那么 put 就变成了 update，直接将 skiplist 中的对应 key 的 value 修改为当前的 newvalue。</p>
+</li>
+<li><p>如果没有找到，也就是上文提到的，首先随机产生一个当前的 level。如果当前的 level 超过 skiplist 当前最大的 level，那么需要将当前的 level 设置为新生成的 level，然后将 head 放到每一层的头节点。</p>
+</li>
+<li><p>将插入的数据变成 Node，Node 包含了当前 key，value 和 level 信息，当然内部还有个 next 信息</p>
+</li>
+<li><p>从第 1 层往上，将当前的 x 插入到每一层。</p>
+</li>
+</ol>
+<p>这里有个问题就是对 level 的管理，因为不可能随便随机一个数出来，最好的是希望设置一个 maxlevel，然后作为 seed，在 maxLevel 下面随机产生层数。</p>
+<h6 id="随机算法"><a href="#随机算法" class="headerlink" title="随机算法"></a>随机算法</h6><p>在论文中提到过，skiplist 本身是个概率性的算法，个人觉得概率性其实就是指的层数的选择。他想要达到的效果是在上升中，某一层出现的概率是大致一定的。也就是说如果第 i 层的元素能够按照某个固定的概率 p（上文使用的是 1&#x2F;2）出现在在 i+1 层，这里面涉及到概率论里面期望运算，就不再赘述了（我已经还给老师了）。一句话说就是如过选择的是 p&#x3D;1&#x2F;2，那么我们就希望如果 n 等于 16，那么第 0 层是 16，第二次是 8，第三层是 4。说白了就是返回的值出现的概率是一样的，比如 返回 1 的概率就是 1&#x2F;2，返回 2 的概率就是 1&#x2F;4。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">final</span> <span class="type">double</span> <span class="variable">PROBABILITY</span> <span class="operator">=</span> <span class="number">0.5</span>;</span><br><span class="line"><span class="keyword">private</span> <span class="type">int</span> <span class="title function_">randomLevel</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="type">int</span> <span class="variable">level</span> <span class="operator">=</span> <span class="number">1</span>;</span><br><span class="line">        <span class="type">Random</span> <span class="variable">random</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Random</span>();</span><br><span class="line">        <span class="keyword">while</span> (random.nextDouble() &lt; PROBABILITY &amp;&amp; level &lt; MAX_LEVEL) &#123;</span><br><span class="line">            level++;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> level;</span><br><span class="line">    &#125;</span><br></pre></td></tr></table></figure>
+
+<p>使用这种方式可以生成，主要是因为 random.nextDouble() 出现的数是比较均匀的分布，就是出现的概率是相对一定的，然后只要小于 0.5 就多一层，也就是上面的 1&#x2F;2 的概率，继续增加 level，则就是 1&#x2F;2 *1&#x2F;2 的概率了。</p>
+<h5 id="删除"><a href="#删除" class="headerlink" title="删除"></a>删除</h5><p>删除也是在查询基础上做的，伪代码如下：</p>
+<p><img src="http://image.mingyouxiaozhu.top/blog/%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%88%AA%E5%9B%BE_16935584519268.png" alt="img"></p>
+<p>首先仍然是记录下查询过程的每一层的上一个节点，如果找到这个值对应的 Node，就将 update 中存储的值都进行一个链表删除操作，然后释放内存。最后，还需要检查当前是否删除了最高的 level 中的最后一个 node，如果是还需要将当前的 level 减 1.</p>
+<h4 id="自己写个-SkipList"><a href="#自己写个-SkipList" class="headerlink" title="自己写个 SkipList"></a>自己写个 SkipList</h4><p>使用 java 自己写了个 skiplist，其中数据使用 DataNode，索引使用 IndexNode，避免值的无效覆盖：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br><span class="line">239</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> java.util.LinkedList;</span><br><span class="line"><span class="keyword">import</span> java.util.Random;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">SkipList</span>&lt;K <span class="keyword">extends</span> <span class="title class_">Comparable</span>&lt;K&gt;, V&gt; &#123;</span><br><span class="line">	<span class="comment">// 当前最大的层数</span></span><br><span class="line">    <span class="keyword">private</span> <span class="type">int</span> <span class="variable">maxLevel</span> <span class="operator">=</span> <span class="number">12</span>;</span><br><span class="line">    <span class="comment">// 头结点，down 使用down指向下一层</span></span><br><span class="line">    <span class="keyword">private</span> SkipListIndexNode&lt;K, V&gt; head;</span><br><span class="line">	<span class="comment">// 当前的level</span></span><br><span class="line">    <span class="keyword">private</span> <span class="type">int</span> <span class="variable">level</span> <span class="operator">=</span> <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">static</span> Random random;</span><br><span class="line">    <span class="comment">//跳到下一层的概率</span></span><br><span class="line">    <span class="keyword">private</span> <span class="type">double</span> <span class="variable">probability</span> <span class="operator">=</span> <span class="number">0.5</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="title function_">SkipList</span><span class="params">(<span class="type">int</span> maxLevel, <span class="type">double</span> probability)</span> &#123;</span><br><span class="line">        random = <span class="keyword">new</span> <span class="title class_">Random</span>();</span><br><span class="line">        <span class="built_in">this</span>.maxLevel = maxLevel;</span><br><span class="line">        <span class="built_in">this</span>.probability = probability;</span><br><span class="line">        <span class="type">SkipListDataNode</span> <span class="variable">data</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">SkipListDataNode</span>(Integer.MIN_VALUE, <span class="literal">null</span>);</span><br><span class="line">        head = <span class="keyword">new</span> <span class="title class_">SkipListIndexNode</span>(data, <span class="number">1</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> V <span class="title function_">get</span><span class="params">(K key)</span> &#123;</span><br><span class="line">        SkipListDataNode&lt;K, V&gt; old = searchNode(key);</span><br><span class="line">        <span class="keyword">if</span> (old != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">return</span> old.value;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> K <span class="title function_">getMax</span><span class="params">()</span> &#123;</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; cur = head;</span><br><span class="line">        <span class="keyword">while</span> (cur.down != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">while</span> (cur.right != <span class="literal">null</span>) &#123;</span><br><span class="line">                cur = cur.right;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">if</span> (cur.down == <span class="literal">null</span> &amp;&amp; cur.right == <span class="literal">null</span>) &#123;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            cur = cur.down;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> cur.getKey();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> K <span class="title function_">getMin</span><span class="params">()</span> &#123;</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; cur = head;</span><br><span class="line">        <span class="keyword">while</span> (cur.down != <span class="literal">null</span>) &#123;</span><br><span class="line">            cur = cur.down;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> cur.right == <span class="literal">null</span> ? <span class="literal">null</span> : cur.right.getKey();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">put</span><span class="params">(K key, V value)</span> &#123;</span><br><span class="line">        <span class="type">SkipListDataNode</span> <span class="variable">old</span> <span class="operator">=</span> searchNode(key);</span><br><span class="line">        <span class="keyword">if</span> (old != <span class="literal">null</span>) &#123;</span><br><span class="line">            old.value = value;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="type">int</span> <span class="variable">newLevel</span> <span class="operator">=</span> randomLevel();</span><br><span class="line">        <span class="keyword">if</span>(newLevel&gt;maxLevel)&#123;</span><br><span class="line">            newLevel=maxLevel;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (newLevel &gt; level ) &#123;</span><br><span class="line">            <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> level; i &lt; newLevel; i++) &#123;</span><br><span class="line">                genNewHead();</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        SkipListDataNode&lt;K, V&gt; data = <span class="keyword">new</span> <span class="title class_">SkipListDataNode</span>&lt;K, V&gt;(key, value);</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; indexNode = <span class="keyword">new</span> <span class="title class_">SkipListIndexNode</span>&lt;K, V&gt;(data, newLevel);</span><br><span class="line">        LinkedList&lt;SkipListIndexNode&gt; update = <span class="keyword">new</span> <span class="title class_">LinkedList</span>&lt;SkipListIndexNode&gt;();</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; cur = head;</span><br><span class="line">        <span class="keyword">while</span> (cur != <span class="literal">null</span> &amp;&amp; cur.level &gt; newLevel) &#123;</span><br><span class="line">            cur = cur.down;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">while</span> (cur != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">while</span> (cur.right != <span class="literal">null</span> &amp;&amp; cur.right.getKey().compareTo(key) &lt; <span class="number">0</span>) &#123;</span><br><span class="line">                cur = cur.right;</span><br><span class="line">            &#125;</span><br><span class="line">            update.add(cur);</span><br><span class="line">            cur = cur.down;</span><br><span class="line">        &#125;</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; bottom = <span class="literal">null</span>;</span><br><span class="line">        <span class="keyword">while</span> (!update.isEmpty()) &#123;</span><br><span class="line">            <span class="type">SkipListIndexNode</span> <span class="variable">prevNode</span> <span class="operator">=</span> update.pollLast();</span><br><span class="line">            <span class="type">SkipListIndexNode</span> <span class="variable">curLevelIndex</span> <span class="operator">=</span> indexNode.genIndexNodeByLevel(prevNode.level);</span><br><span class="line">            curLevelIndex.right = prevNode.right;</span><br><span class="line">            prevNode.right = curLevelIndex;</span><br><span class="line">            curLevelIndex.down = bottom;</span><br><span class="line">            bottom = curLevelIndex;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">delete</span><span class="params">(K key)</span> &#123;</span><br><span class="line">        LinkedList&lt;SkipListIndexNode&gt; update = <span class="keyword">new</span> <span class="title class_">LinkedList</span>&lt;SkipListIndexNode&gt;();</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; cur = head;</span><br><span class="line">        <span class="keyword">while</span> (cur != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">while</span> (cur.right != <span class="literal">null</span> &amp;&amp; cur.right.getKey().compareTo(key) &lt; <span class="number">0</span>) &#123;</span><br><span class="line">                cur = cur.right;</span><br><span class="line">            &#125;</span><br><span class="line">            update.add(cur);</span><br><span class="line">            cur = cur.down;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">while</span> (!update.isEmpty()) &#123;</span><br><span class="line">            <span class="type">SkipListIndexNode</span> <span class="variable">skipListIndexNode</span> <span class="operator">=</span> update.pollLast();</span><br><span class="line">            <span class="keyword">if</span> (skipListIndexNode.right != <span class="literal">null</span> &amp;&amp; skipListIndexNode.right.getKey().compareTo(key) == <span class="number">0</span>) &#123;</span><br><span class="line">                skipListIndexNode.right = skipListIndexNode.right.right;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">while</span> (head.right == <span class="literal">null</span>) &#123;</span><br><span class="line">            level--;</span><br><span class="line">            head = head.down;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">printList</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="type">SkipListIndexNode</span> <span class="variable">bottom</span> <span class="operator">=</span> head;</span><br><span class="line">        LinkedList&lt;SkipListIndexNode&gt; stack = <span class="keyword">new</span> <span class="title class_">LinkedList</span>&lt;SkipListIndexNode&gt;();</span><br><span class="line">        <span class="keyword">while</span> (bottom.down != <span class="literal">null</span>) &#123;</span><br><span class="line">            bottom = bottom.down;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="type">SkipListIndexNode</span> <span class="variable">printLevel</span> <span class="operator">=</span> head;</span><br><span class="line">        <span class="keyword">while</span> (printLevel != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="type">SkipListIndexNode</span> <span class="variable">printLeveltail</span> <span class="operator">=</span> printLevel;</span><br><span class="line">            System.out.printf(<span class="string">&quot;%-5s&quot;</span>, <span class="string">&quot;head-&gt;&quot;</span>);</span><br><span class="line">            <span class="type">SkipListIndexNode</span> <span class="variable">bottomTail</span> <span class="operator">=</span> bottom;</span><br><span class="line">            <span class="keyword">while</span> (printLeveltail != <span class="literal">null</span> &amp;&amp; bottomTail != <span class="literal">null</span>) &#123;</span><br><span class="line">                <span class="keyword">if</span> (printLeveltail.right != <span class="literal">null</span> &amp;&amp; printLeveltail.right.getKey().compareTo(bottomTail.right.getKey()) == <span class="number">0</span>) &#123;</span><br><span class="line">                    System.out.printf(<span class="string">&quot;%-5s&quot;</span>, printLeveltail.right.getKey() + <span class="string">&quot;-&gt;&quot;</span>);</span><br><span class="line">                    printLeveltail = printLeveltail.right;</span><br><span class="line">                &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">                    System.out.printf(<span class="string">&quot;%-5s&quot;</span>, <span class="string">&quot;&quot;</span>);</span><br><span class="line">                &#125;</span><br><span class="line">                bottomTail = bottomTail.right;</span><br><span class="line"></span><br><span class="line">            &#125;</span><br><span class="line">            printLevel = printLevel.down;</span><br><span class="line">            System.out.println();</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> SkipListDataNode <span class="title function_">searchNode</span><span class="params">(K key)</span> &#123;</span><br><span class="line">        <span class="keyword">if</span> (key == <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; cur = head;</span><br><span class="line">        <span class="keyword">while</span> (cur != <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">while</span> (cur.right != <span class="literal">null</span> &amp;&amp; cur.right.getKey().compareTo(key) &lt; <span class="number">0</span>) &#123;</span><br><span class="line">                cur = cur.right;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">if</span> (cur.right != <span class="literal">null</span> &amp;&amp; cur.right.getKey().compareTo(key) == <span class="number">0</span>) &#123;</span><br><span class="line">                <span class="keyword">return</span> cur.right.dataNode;</span><br><span class="line">            &#125;</span><br><span class="line">            cur = cur.down;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">null</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">genNewHead</span><span class="params">()</span> &#123;</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; skipListIndexNode = <span class="keyword">new</span> <span class="title class_">SkipListIndexNode</span>&lt;K, V&gt;(<span class="literal">null</span>, ++level);</span><br><span class="line">        skipListIndexNode.down = head;</span><br><span class="line">        head = skipListIndexNode;</span><br><span class="line"></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span> <span class="type">int</span> <span class="title function_">randomLevel</span><span class="params">()</span> &#123;</span><br><span class="line">        <span class="type">int</span> <span class="variable">level</span> <span class="operator">=</span> <span class="number">1</span>;</span><br><span class="line">        <span class="keyword">while</span> (random.nextDouble() &lt; probability &amp;&amp; level &lt; maxLevel) &#123;</span><br><span class="line">            level++;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> level;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> &#123;</span><br><span class="line">        SkipList&lt;Integer, Integer&gt; skipList = <span class="keyword">new</span> <span class="title class_">SkipList</span>&lt;Integer, Integer&gt;(<span class="number">12</span>, <span class="number">0.5</span>);</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">1</span>; i &lt;= <span class="number">200</span>; i++) &#123;</span><br><span class="line">            skipList.put(<span class="keyword">new</span> <span class="title class_">Random</span>().nextInt(<span class="number">200</span>), <span class="number">100</span> + i);</span><br><span class="line">        &#125;</span><br><span class="line">        skipList.printList();</span><br><span class="line">        ;</span><br><span class="line">        System.out.println(skipList.get(<span class="number">10</span>));</span><br><span class="line">        System.out.println(skipList.get(<span class="number">11</span>));</span><br><span class="line">        System.out.println(skipList.get(<span class="number">12</span>));</span><br><span class="line">        System.out.println(skipList.getMin());</span><br><span class="line">        System.out.println(skipList.getMax());</span><br><span class="line">        <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt;= <span class="number">20</span>; i += <span class="number">2</span>) &#123;</span><br><span class="line">            skipList.delete(i);</span><br><span class="line">        &#125;</span><br><span class="line">        System.out.println(skipList.get(<span class="number">10</span>));</span><br><span class="line">        System.out.println(skipList.get(<span class="number">11</span>));</span><br><span class="line">        System.out.println(skipList.get(<span class="number">12</span>));</span><br><span class="line">        System.out.println(skipList.getMin());</span><br><span class="line">        System.out.println(skipList.getMax());</span><br><span class="line"></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">class</span> <span class="title class_">SkipListDataNode</span>&lt;K <span class="keyword">extends</span> <span class="title class_">Comparable</span>&lt;K&gt;, V&gt; &#123;</span><br><span class="line">        <span class="keyword">private</span> K key;</span><br><span class="line">        <span class="keyword">private</span> V value;</span><br><span class="line"></span><br><span class="line">        SkipListDataNode(K key, V value) &#123;</span><br><span class="line">            <span class="built_in">this</span>.key = key;</span><br><span class="line">            <span class="built_in">this</span>.value = value;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">class</span> <span class="title class_">SkipListIndexNode</span>&lt;K <span class="keyword">extends</span> <span class="title class_">Comparable</span>&lt;K&gt;, V&gt; &#123;</span><br><span class="line">        SkipListDataNode&lt;K, V&gt; dataNode;</span><br><span class="line">        <span class="type">int</span> <span class="variable">level</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; right;</span><br><span class="line">        SkipListIndexNode&lt;K, V&gt; down;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">public</span> <span class="title function_">SkipListIndexNode</span><span class="params">(SkipListDataNode&lt;K, V&gt; dataNode, <span class="type">int</span> level)</span> &#123;</span><br><span class="line">            <span class="built_in">this</span>.dataNode = dataNode;</span><br><span class="line">            <span class="built_in">this</span>.level = level;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">public</span> SkipListIndexNode <span class="title function_">genIndexNodeByLevel</span><span class="params">(<span class="type">int</span> level)</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">SkipListIndexNode</span>(<span class="built_in">this</span>.dataNode, level);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">public</span> V <span class="title function_">getValue</span><span class="params">()</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> dataNode.value;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">public</span> K <span class="title function_">getKey</span><span class="params">()</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> dataNode.key;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<h2 id="LevelDB-的-SkipList-实现"><a href="#LevelDB-的-SkipList-实现" class="headerlink" title="LevelDB 的 SkipList 实现"></a>LevelDB 的 SkipList 实现</h2><p>在上面已经较为详细的介绍了 SkipList，也使用 java 做了一个简单的实现。下面来看下 LevelDB 中的 SkipList 的实现。</p>
+<p>在几乎所有的 SkipList 的方法上面都有一个 template 。这个的作用有点类似于 java 的泛型，只不过 java 是运行时而 C++ 是编译阶段。</p>
+<blockquote>
+<p>template &lt;typename Key, class Comparator&gt; 值得是一个 key，这个 key 和 Comparator 是一个占位符，用来表示具体传入的数据类型，后面的 Comparator，则说明需要传入一个实现了 Comparator 的接口或者类的类型。</p>
+</blockquote>
+<h4 id="random-方法"><a href="#random-方法" class="headerlink" title="random 方法"></a>random 方法</h4><p>首先来看下 random 的方法使用的位置：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">template &lt;typename Key, <span class="class"><span class="keyword">class</span> <span class="title">Comparator</span>&gt;</span></span><br><span class="line"><span class="type">int</span> SkipList&lt;Key, Comparator&gt;::RandomHeight() &#123;</span><br><span class="line">  <span class="comment">// Increase height with probability 1 in kBranching</span></span><br><span class="line">  <span class="type">static</span> <span class="type">const</span> <span class="type">unsigned</span> <span class="type">int</span> kBranching = <span class="number">4</span>;</span><br><span class="line">  <span class="type">int</span> height = <span class="number">1</span>; <span class="comment">// 初始level是1</span></span><br><span class="line">  <span class="keyword">while</span> (height &lt; kMaxHeight &amp;&amp; rnd_.OneIn(kBranching)) &#123;<span class="comment">// 根据概率，默认1/4</span></span><br><span class="line">    height++;</span><br><span class="line">  &#125;</span><br><span class="line">  assert(height &gt; <span class="number">0</span>);</span><br><span class="line">  assert(height &lt;= kMaxHeight); <span class="comment">// 当前的level是不是小于kMaxHeight（默认12）</span></span><br><span class="line">  <span class="keyword">return</span> height;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>其中最要的是这个<em>rnd_.OneIn</em> 方法，这个方法就是生成均匀分布的随机数。</p>
+<blockquote>
+<p>现在的随机算法都是伪随机，算法为线性同余生成器，算法表示为：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Xn+<span class="number">1</span> = (a * Xn + c) % m</span><br></pre></td></tr></table></figure>
+
+<p>其中，<code>Xn</code> 是当前生成的伪随机数，<code>Xn+1</code> 是下一个生成的伪随机数，<code>a</code> 是乘法因子，<code>c</code> 是增量，<code>m</code> 是模数。通常，<code>a</code> 取 <code>16807</code>，<code>c</code> 取 <code>0</code>，<code>m</code> 取 <code>2147483647</code>，这是因为这组参数在计算中具有良好的性质，可以生成均匀分布的伪随机数。</p>
+</blockquote>
+<p>在 leveldb 中就使用到了上面提到的两个魔法数，具体是现在在<code>util/random.h</code>，因为是一个整体，所以全部复制出来，如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Random</span> &#123;</span></span><br><span class="line"> private:</span><br><span class="line">  <span class="type">uint32_t</span> seed_;</span><br><span class="line"></span><br><span class="line"> public:</span><br><span class="line">  explicit <span class="title function_">Random</span><span class="params">(<span class="type">uint32_t</span> s)</span> : <span class="title function_">seed_</span><span class="params">(s &amp; <span class="number">0x7fffffff</span>u)</span> &#123; <span class="comment">//0x7fffffff u表示无符号 2^31-1 二进制 111 1111 1111 1111 1111 1111 1111 1111 将第一位取0 ，因为无符号转化为有符号的时候头部位1 表示为负数</span></span><br><span class="line">                                                          <span class="comment">// 所以此处的主要目的是确保传入的s为正数，默认传入的seed初始值为0xdeadbeef 二进制为1101 1110 1010 1101 1011 1110 1110 1111</span></span><br><span class="line">    <span class="comment">// Avoid bad seeds.</span></span><br><span class="line">    <span class="keyword">if</span> (seed_ == <span class="number">0</span> || seed_ == <span class="number">2147483647L</span>) &#123;</span><br><span class="line">      seed_ = <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="type">uint32_t</span> <span class="title function_">Next</span><span class="params">()</span> &#123;</span><br><span class="line">    <span class="type">static</span> <span class="type">const</span> <span class="type">uint32_t</span> M = <span class="number">2147483647L</span>;  <span class="comment">// 2^31-1</span></span><br><span class="line">    <span class="type">static</span> <span class="type">const</span> <span class="type">uint64_t</span> A = <span class="number">16807</span>;        <span class="comment">// bits 14, 8, 7, 5, 2, 1, 0 //无符号64位二进制0100 0001 1010 0111</span></span><br><span class="line">    <span class="comment">// We are computing</span></span><br><span class="line">    <span class="comment">//       seed_ = (seed_ * A) % M,    where M = 2^31-1</span></span><br><span class="line">    <span class="comment">//</span></span><br><span class="line">    <span class="comment">// seed_ must not be zero or M, or else all subsequent computed values</span></span><br><span class="line">    <span class="comment">// will be zero or M respectively.  For all other values, seed_ will end</span></span><br><span class="line">    <span class="comment">// up cycling through every number in [1,M-1]</span></span><br><span class="line">    <span class="type">uint64_t</span> product = seed_ * A; <span class="comment">//26696993619177 二进制 High[000000 00000 0000 0000 1100 0010 0011  1] low [111 00000 1101 0010 0011 1100 1110 1001]</span></span><br><span class="line">     <span class="comment">//这里是计算Mod算法的一个优化，一个64为的数，可以分为高33 位和低31 位的数</span></span><br><span class="line">    <span class="comment">// Compute (product % M) using the fact that ((x &lt;&lt; 31) % M) == x. product=high&lt;&lt;31+low 又因为product=seed_*A,所以此时product=(high*M+high+low)%M 其中 M = 2^31-1</span></span><br><span class="line">    <span class="comment">// 因为seed_ 和A 中，seed_的值在初始化的时候就让他小于2^31-1，A 是固定的16807,所以这两个值都不会大于M的值，所以取余最后的结果就等(high+low)%M=high+low,所以下面的这个计算是获取high和low的值相加，也就得到了seed_</span></span><br><span class="line">    <span class="comment">// 但是有一种情况就是product的low为刚好但是 2^31-1，这个时候product=(high*M+high+1*M)%M=high ，但是使用下面的结果会是high+M，因为M&amp;M=M。所以，需要判断是否seed_ 比M大，然后前去M，直接使用high,也确保了seed的值一直小于M</span></span><br><span class="line">    <span class="comment">// 最后强制转换为32位的值</span></span><br><span class="line">    seed_ = static_cast&lt;<span class="type">uint32_t</span>&gt;((product &gt;&gt; <span class="number">31</span>) + (product &amp; M)); <span class="comment">// High+low [000000 00000 0000 0000 1100 0010 0011  1]+[111 00000 1101 0010 0011 1100 1110 1001] &amp; [111 1111 1111 1111 1111 1111 1111 1111]</span></span><br><span class="line">    <span class="comment">// The first reduction may overflow by 1 bit, so we may need to</span></span><br><span class="line">    <span class="comment">// repeat.  mod == M is not possible; using &gt; allows the faster</span></span><br><span class="line">    <span class="comment">// sign-bit-based test.</span></span><br><span class="line">    <span class="keyword">if</span> (seed_ &gt; M) &#123;</span><br><span class="line">      seed_ -= M;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> seed_;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="comment">// 在[0,n-1]之间返回随机数</span></span><br><span class="line">  <span class="comment">// Returns a uniformly distributed value in the range [0..n-1]</span></span><br><span class="line">  <span class="comment">// REQUIRES: n &gt; 0</span></span><br><span class="line">  <span class="type">uint32_t</span> <span class="title function_">Uniform</span><span class="params">(<span class="type">int</span> n)</span> &#123; <span class="keyword">return</span> Next() % n; &#125;</span><br><span class="line">  <span class="comment">// n分之一的概率返回true</span></span><br><span class="line">  <span class="comment">// Randomly returns true ~&quot;1/n&quot; of the time, and false otherwise.</span></span><br><span class="line">  <span class="comment">// REQUIRES: n &gt; 0</span></span><br><span class="line">  <span class="type">bool</span> <span class="title function_">OneIn</span><span class="params">(<span class="type">int</span> n)</span> &#123; <span class="keyword">return</span> (Next() % n) == <span class="number">0</span>; &#125;</span><br><span class="line">  <span class="comment">// //首先求得[0,max_log]的一个随机数，然后求得[0,2^maxlog-1]的一个随机数</span></span><br><span class="line">  <span class="comment">// Skewed: pick &quot;base&quot; uniformly from range [0,max_log] and then</span></span><br><span class="line">  <span class="comment">// return &quot;base&quot; random bits.  The effect is to pick a number in the</span></span><br><span class="line">  <span class="comment">// range [0,2^max_log-1] with exponential bias towards smaller numbers.</span></span><br><span class="line">  <span class="type">uint32_t</span> <span class="title function_">Skewed</span><span class="params">(<span class="type">int</span> max_log)</span> &#123; <span class="keyword">return</span> Uniform(<span class="number">1</span> &lt;&lt; Uniform(max_log + <span class="number">1</span>)); &#125;</span><br><span class="line">&#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上面的方法就随机数的 seed 计算比较上头。因为第一个种子确定后，后面的种子都相对确定了，而且这个出现的概率比较均匀，所以也就是 OneIn 能够保证出现概率接近的原因。</p>
+<h4 id="数据结构"><a href="#数据结构" class="headerlink" title="数据结构"></a>数据结构</h4><p>leveldb 中的 SkipList 具体实现在<code>db/skiplist.h</code>中。</p>
+<p>私有域：</p>
+<ol>
+<li>struct Node 用来存储数据，和上面 Java 实现的不同，Node 中 key 的值既包含了需要查询的 key，也包含具体的 Value，这个和数据存储格式相关系</li>
+<li>enum { <em>kMaxHeight</em> &#x3D; 12 }; 允许最大的层数是 12 层</li>
+<li>compare_ 用来做 key 值比较的比较器</li>
+<li>arena_ 为每个 Node 分配内存</li>
+<li>head_ 头结点指针</li>
+<li>std::atomic<int> max<em>height</em>; 原子递增的最大层数</li>
+<li>一个上文提到的随机数生成的对象</li>
+</ol>
+<blockquote>
+<p>explicit 关键字一般用来修饰类的构造函数，作用是告诉编译器按照实际的类型来构造函数，不允许做隐式转换。</p>
+</blockquote>
+<p>公有域：</p>
+<ol>
+<li><p>一个不允许隐式转换的构造器</p>
+</li>
+<li><p>void Insert(const Key&amp; key); &#x2F;&#x2F; 插入方法</p>
+</li>
+<li><p>bool Contains(const Key&amp; key) const; 判断是否存在</p>
+</li>
+<li><p>Iterator 一个迭代器实现，迭代器中包含了多种查询方式，包括查找当前的 key 等方法（后文详细介绍）。其中也包含了私有域，指向当前的 SkipList 和一个用来遍历的 Node。</p>
+</li>
+</ol>
+<p>Node 结构体包含了一个 Key，这个就是前面提到的<code>template &lt;typename Key, class Comparator&gt;</code>中的这个 Key，还包含了一个数组</p>
+<blockquote>
+<p>std::atomic&lt;Node*&gt; next_[1];</p>
+</blockquote>
+<p>这个是一种柔性的数组。也就是大小是可变的，next 数组是一个指针数组，也就是上文中 java 代码中的 IndexNode，本身不存储 key Value，而是作为索引存储。这个 next 表示当前层数中指向的下一个节点。</p>
+<p>一个 SkipList 初始化过程中需要传入的参数就是比较器 comparator* 和内存分配器 arena*的指针。</p>
+<h5 id="查询"><a href="#查询" class="headerlink" title="查询"></a>查询</h5><p>和上面的实现不同的是，leveldb 的查询是放在 Iterator 的 seek 方法中的</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">template &lt;typename Key, <span class="class"><span class="keyword">class</span> <span class="title">Comparator</span>&gt;</span></span><br><span class="line"><span class="keyword">inline</span> <span class="type">void</span> SkipList&lt;Key, Comparator&gt;::Iterator::Seek(<span class="type">const</span> Key&amp; target) &#123;</span><br><span class="line">  node_ = list_-&gt;FindGreaterOrEqual(target, nullptr);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>最后调用的是 SkipList 本身的 FindGreaterOrEqual 方法，也就是要么找到当前值，要么就找到比当前值大的那个值。该方法包含了两个参数，第一个是需要查询的值，第二个是用来存储当前查询 level 的前序节点，也就是 update 数组。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line">template &lt;typename Key, <span class="class"><span class="keyword">class</span> <span class="title">Comparator</span>&gt;</span></span><br><span class="line"><span class="type">bool</span> SkipList&lt;Key, Comparator&gt;::KeyIsAfterNode(<span class="type">const</span> Key&amp; key, Node* n) <span class="type">const</span> &#123;</span><br><span class="line">  <span class="comment">// null n is considered infinite</span></span><br><span class="line">  <span class="keyword">return</span> (n != nullptr) &amp;&amp; (compare_(n-&gt;key, key) &lt; <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">template &lt;typename Key, <span class="class"><span class="keyword">class</span> <span class="title">Comparator</span>&gt;</span></span><br><span class="line">typename SkipList&lt;Key, Comparator&gt;::Node*</span><br><span class="line">SkipList&lt;Key, Comparator&gt;::FindGreaterOrEqual(<span class="type">const</span> Key&amp; key,</span><br><span class="line">                                              Node** prev) <span class="type">const</span> &#123;</span><br><span class="line">  Node* x = head_; <span class="comment">// x为后续查询使用的临时数据，此时x在最上层的头结点</span></span><br><span class="line">  <span class="type">int</span> level = GetMaxHeight() - <span class="number">1</span>; <span class="comment">//获取当前最大的层数，从0开始，所以减去1</span></span><br><span class="line">  <span class="keyword">while</span> (<span class="literal">true</span>) &#123;</span><br><span class="line">    Node* next = x-&gt;Next(level); <span class="comment">// next数组就是每一层链表的数据，从head开始</span></span><br><span class="line">    <span class="keyword">if</span> (KeyIsAfterNode(key, next)) &#123; <span class="comment">//找到当前的查询的值是否在x后面，如果是，则说明当前的值的后一个值小于查询的值</span></span><br><span class="line">      <span class="comment">// Keep searching in this list</span></span><br><span class="line">      x = next; <span class="comment">//往右查询。</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123; <span class="comment">// 如果x的后面的值大于查询的key，则判断是是否需要记录层数，get中prev是nullptr，所以不需要存储，在insert的时候就需要记录下来</span></span><br><span class="line">      <span class="keyword">if</span> (prev != nullptr) prev[level] = x;</span><br><span class="line">      <span class="keyword">if</span> (level == <span class="number">0</span>) &#123; <span class="comment">// 如果当前已经查询到最后一层，则返回这个next，此时next因为前面的KeyIsAfterNode 返回的是false，所以要么当前的值的右边为nullptr要么这个值就比key大，而且是紧挨的着的那个大于这个key的值。仅仅在第0层是这个结果</span></span><br><span class="line">        <span class="keyword">return</span> next;</span><br><span class="line">      &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// Switch to next list</span></span><br><span class="line">        level--;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>本身实现上和上文的没有区别，首先从最高层往下便利，其中 Next 方法就是获取到下一层的节点。这个方法还有一个实现就是<code>NoBarrier_Next</code>,两者的区别就是是否允许重排，在 java 中，指令重排是使用 valite 关键字关闭，c++中用下面的方式：（直接使用 leveldb 的代码）</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">Node* <span class="title function_">Next</span><span class="params">(<span class="type">int</span> n)</span> &#123;</span><br><span class="line">  assert(n &gt;= <span class="number">0</span>);</span><br><span class="line">  <span class="comment">// Use an &#x27;acquire load&#x27; so that we observe a fully initialized</span></span><br><span class="line">  <span class="comment">// version of the returned Node.</span></span><br><span class="line">  <span class="keyword">return</span> next_[n].load(<span class="built_in">std</span>::memory_order_acquire);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">void</span> <span class="title function_">SetNext</span><span class="params">(<span class="type">int</span> n, Node* x)</span> &#123;</span><br><span class="line">  assert(n &gt;= <span class="number">0</span>);</span><br><span class="line">  <span class="comment">// Use a &#x27;release store&#x27; so that anybody who reads through this</span></span><br><span class="line">  <span class="comment">// pointer observes a fully initialized version of the inserted node.</span></span><br><span class="line">  next_[n].store(x, <span class="built_in">std</span>::memory_order_release);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// No-barrier variants that can be safely used in a few locations.</span></span><br><span class="line">Node* <span class="title function_">NoBarrier_Next</span><span class="params">(<span class="type">int</span> n)</span> &#123;</span><br><span class="line">  assert(n &gt;= <span class="number">0</span>);</span><br><span class="line">  <span class="keyword">return</span> next_[n].load(<span class="built_in">std</span>::memory_order_relaxed);</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">void</span> <span class="title function_">NoBarrier_SetNext</span><span class="params">(<span class="type">int</span> n, Node* x)</span> &#123;</span><br><span class="line">  assert(n &gt;= <span class="number">0</span>);</span><br><span class="line">  next_[n].store(x, <span class="built_in">std</span>::memory_order_relaxed);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>其中的 memory_order 就是决定当前的指令是否重排：</p>
+<ol>
+<li><code>std::memory_order_acquire</code>：这是一种内存顺序语义，用于 <code>load</code> 操作。它确保在加载 <code>next_[n]</code> 指针之前，所有之前的内存操作（写入和读取）都不会被重排序到加载之后。在多线程环境中，这可以确保读取到 <code>next_[n]</code> 的值是最新的。</li>
+<li><code>std::memory_order_release</code>：这是一种内存顺序语义，用于 <code>store</code> 操作。它确保在存储 <code>x</code> 到 <code>next_[n]</code> 指针之后，所有之后的内存操作（写入和读取）都不会被重排序到存储之前。在多线程环境中，这可以确保 <code>x</code> 被完全初始化之后再被其他线程访问。</li>
+<li><code>std::memory_order_relaxed</code>：这是一种较弱的内存顺序语义，通常用于 <code>load</code> 和 <code>store</code> 操作。它允许更大的重排序自由度，不保证像 <code>acquire</code> 和 <code>release</code> 那样的强制顺序。通常在不需要严格的顺序控制时使用，以提高性能。</li>
+</ol>
+<p>所以 setNext 值得是当前的获取的 n 是否被后续访问的线程可见，避免了出现多次创建甚至覆盖的问题，但是后面的两个则没有这个限制。</p>
+<p>来看个例子：</p>
+<p>当前如果有:</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">head2---&gt;3-&gt;</span><br><span class="line"></span><br><span class="line">head1---&gt;3-&gt;   5-&gt;   9-&gt;</span><br><span class="line"></span><br><span class="line">head0---&gt;3-&gt;4-&gt;5-&gt;7-&gt;9-&gt;</span><br></pre></td></tr></table></figure>
+
+<p>如果有上文中的 3 层，现在需要查询 8</p>
+<ol>
+<li>首先 x 被复制为 head2 进入循环，然后 x 获取 head 的链表也就是 next 中的数据，此时为 3</li>
+<li>当前查询的 8 大于 3 ，所以将 3 位置 Node 赋值给 x,进入到下次循环</li>
+<li>继续获取 3 后面的值，但是此时 3 后面的值为空，所以 KeyIsAfterNode 返回为 false，进入到 else，判断 prev 是否存储，判断是否已经到了第 0 层，此时否为 false，所以将 level–，找下一层</li>
+<li>x 此时获取的是 next 中的第 2 层，也就是 head1 后面的 3，因为 3 小于 8，所以找到了 5，所以将 5 赋值给 x，继续循环</li>
+<li>此时 x 为 5，里面的 next 指向的是 9，也就是 next 此时为 9，9 大于 8。所以不在赋值给 x。而是进入下一层</li>
+<li>进入到 head0，此时 x 为 5，next 为 7，然后 7 小于 8，进入下次循环</li>
+<li>此时 x 为 7，但是 next 为 9，因为是 0 层了，所以直接返回 next</li>
+</ol>
+<p>也就是说这个方法返回的值和他的名字一样，和当前值相等或者比当前值大的第一个数。在 Iterator 中 seek 的值会存储在本身的 node_ 属性中，需要进一步进行判断。如果这个值为 nullptr，则 Iterator 中的 Valid 为 false。</p>
+<h5 id="插入-1"><a href="#插入-1" class="headerlink" title="插入"></a>插入</h5><p>查询也使用到了上面的 FindGreaterOrEqual</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line">template &lt;typename Key, <span class="class"><span class="keyword">class</span> <span class="title">Comparator</span>&gt;</span></span><br><span class="line"><span class="type">void</span> SkipList&lt;Key, Comparator&gt;::Insert(<span class="type">const</span> Key&amp; key) &#123;</span><br><span class="line">  <span class="comment">// TODO(opt): We can use a barrier-free variant of FindGreaterOrEqual()</span></span><br><span class="line">  <span class="comment">// here since Insert() is externally synchronized.</span></span><br><span class="line">  Node* prev[kMaxHeight];</span><br><span class="line">  Node* x = FindGreaterOrEqual(key, prev);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Our data structure does not allow duplicate insertion</span></span><br><span class="line">  assert(x == nullptr || !Equal(key, x-&gt;key));</span><br><span class="line"></span><br><span class="line">  <span class="type">int</span> height = RandomHeight();</span><br><span class="line">  <span class="keyword">if</span> (height &gt; GetMaxHeight()) &#123;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> i = GetMaxHeight(); i &lt; height; i++) &#123;</span><br><span class="line">      prev[i] = head_;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// It is ok to mutate max_height_ without any synchronization</span></span><br><span class="line">    <span class="comment">// with concurrent readers.  A concurrent reader that observes</span></span><br><span class="line">    <span class="comment">// the new value of max_height_ will see either the old value of</span></span><br><span class="line">    <span class="comment">// new level pointers from head_ (nullptr), or a new value set in</span></span><br><span class="line">    <span class="comment">// the loop below.  In the former case the reader will</span></span><br><span class="line">    <span class="comment">// immediately drop to the next level since nullptr sorts after all</span></span><br><span class="line">    <span class="comment">// keys.  In the latter case the reader will use the new node.</span></span><br><span class="line">    max_height_.store(height, <span class="built_in">std</span>::memory_order_relaxed);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  x = NewNode(key, height);</span><br><span class="line">  <span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; height; i++) &#123;</span><br><span class="line">    <span class="comment">// NoBarrier_SetNext() suffices since we will add a barrier when</span></span><br><span class="line">    <span class="comment">// we publish a pointer to &quot;x&quot; in prev[i].</span></span><br><span class="line">    x-&gt;NoBarrier_SetNext(i, prev[i]-&gt;NoBarrier_Next(i));</span><br><span class="line">    prev[i]-&gt;SetNext(i, x);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line">template &lt;typename Key, <span class="class"><span class="keyword">class</span> <span class="title">Comparator</span>&gt;</span></span><br><span class="line">typename SkipList&lt;Key, Comparator&gt;::Node* SkipList&lt;Key, Comparator&gt;::NewNode(</span><br><span class="line">    <span class="type">const</span> Key&amp; key, <span class="type">int</span> height) &#123;</span><br><span class="line">  <span class="type">char</span>* <span class="type">const</span> node_memory = arena_-&gt;AllocateAligned(</span><br><span class="line">      <span class="keyword">sizeof</span>(Node) + <span class="keyword">sizeof</span>(<span class="built_in">std</span>::atomic&lt;Node*&gt;) * (height - <span class="number">1</span>));</span><br><span class="line">  <span class="keyword">return</span> new (node_memory) Node(key);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>插入过程中，首先是找到已经存在的 key，或者这个 key 的后缀节点，需要注意的是这个 key 再 leveldb 中时不允许在一个一模一样的 key 已经存在然后继续插入的。leveldb 中的每次插入都包含了一个序列，所以这个 key 一般不会一样，我能想到的完全一样的情况感觉就是 sequence 的值获取是出现问题，导致一个 key 拥有了相同的 sequence，这个后面再讨论。</p>
+<p>然后就是获取到一个随机的高度，如果当前的高度超过了现在最大的高度（random 不会返回超过 12 的高度），就需要将在获取 key 的时候存储的 prev 节点添加上新的 head 节点。然后更新高度。将当前的 key 和 height 封装为一个新的 Node，主要是开辟内存空间。然后就是填充各个层的数据</p>
+<h5 id="删除-1"><a href="#删除-1" class="headerlink" title="删除"></a>删除</h5><p>leveldb 本身的删除就是一个添加墓碑标记的删除，后续文件合并才会真正的删除，所以 Skiplist 中也没有删除。</p>
+<h5 id="迭代方式"><a href="#迭代方式" class="headerlink" title="迭代方式"></a>迭代方式</h5><p>SkipList 的迭代器中的方法有：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">bool</span> <span class="title function_">Valid</span><span class="params">()</span> <span class="type">const</span>; <span class="comment">// 查询的结果是否是nullptr</span></span><br><span class="line"><span class="comment">// Advances to the next position.</span></span><br><span class="line"><span class="comment">// REQUIRES: Valid()</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">Next</span><span class="params">()</span>; <span class="comment">// 找到查询值的后续节点</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Advances to the previous position.</span></span><br><span class="line"><span class="comment">// REQUIRES: Valid()</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">Prev</span><span class="params">()</span>;<span class="comment">// 查询值的前序节点</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Advance to the first entry with a key &gt;= target</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">Seek</span><span class="params">(<span class="type">const</span> Key&amp; target)</span>; <span class="comment">// 获取到key&gt;=target的值</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Position at the first entry in list.</span></span><br><span class="line"><span class="comment">// Final state of iterator is Valid() iff list is not empty.</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">SeekToFirst</span><span class="params">()</span>; <span class="comment">// 最小值</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Position at the last entry in list.</span></span><br><span class="line"><span class="comment">// Final state of iterator is Valid() iff list is not empty.</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">SeekToLast</span><span class="params">()</span>; <span class="comment">// 最大值</span></span><br></pre></td></tr></table></figure>
+
+<p>其中 Valid 、 Next 和 Seek 已经大概说过了。主要就是一个 Prev，SeekToFirst 和 SeekToLast。</p>
+<p>SeekToLast 的方法比较简单，就是从 level 为 0 一直遍历到最最后面。SeekToFirst 实现就是找到第一个，也就是获取 level 0 的第一个值。所以这个两个值可以算得上是获取最大最小值。</p>
+<p>Prev 则是找到当前查询值小的最后的一个值：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">template &lt;typename Key, <span class="class"><span class="keyword">class</span> <span class="title">Comparator</span>&gt;</span></span><br><span class="line">typename SkipList&lt;Key, Comparator&gt;::Node*</span><br><span class="line">SkipList&lt;Key, Comparator&gt;::FindLessThan(<span class="type">const</span> Key&amp; key) <span class="type">const</span> &#123;</span><br><span class="line">  Node* x = head_;</span><br><span class="line">  <span class="type">int</span> level = GetMaxHeight() - <span class="number">1</span>;</span><br><span class="line">  <span class="keyword">while</span> (<span class="literal">true</span>) &#123;</span><br><span class="line">    assert(x == head_ || compare_(x-&gt;key, key) &lt; <span class="number">0</span>);</span><br><span class="line">    Node* next = x-&gt;Next(level);</span><br><span class="line">    <span class="keyword">if</span> (next == nullptr || compare_(next-&gt;key, key) &gt;= <span class="number">0</span>) &#123;</span><br><span class="line">      <span class="keyword">if</span> (level == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> x;</span><br><span class="line">      &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// Switch to next list</span></span><br><span class="line">        level--;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      x = next;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>核心实现就是上面的 FindLessThan，可以看到和前面的 FindGreaterOrEqual 类似，FindGreaterOrEqual 已经很详细的说过，这里就不赘述了。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>leveldb 的 skiplist 的实现是比较经典的实现。只是里面的获取为什么需要通过 Iterator，而不是直接提供一个 get 方法我不是很理解。</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+          <div class="post-tags">
+              <a href="/tags/leveldb/" rel="tag"># leveldb</a>
+          </div>
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2023/08/31/LevelDB%E4%B9%8BSlice/" rel="prev" title="LevelDB之Slice">
+                  <i class="fa fa-chevron-left"></i> LevelDB之Slice
+                </a>
+            </div>
+            <div class="post-nav-item">
+                <a href="/2023/09/04/LevelDB%E4%B9%8B%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84/" rel="next" title="LevelDB之整体架构">
+                  LevelDB之整体架构 <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2023</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">mingyouxiaozhu</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>

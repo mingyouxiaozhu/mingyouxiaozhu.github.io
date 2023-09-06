@@ -21,13 +21,13 @@
 
     <meta name="description" content="前言leveldb 是google的大佬写的一个嵌入式的KV数据库。底层是使用的LSM-Tree 索引结构。本文主要涉及levelDB的数据写入，也就是Put 操作。我是个搞java的，C或者C++是不咋会，所以边看边学，可能比较啰嗦。 Debug环境搭建首先拉代码：  git clone https:&#x2F;&#x2F;github.com&#x2F;google&#x2F;leveldb.git  因为源码中的third_par">
 <meta property="og:type" content="article">
-<meta property="og:title" content="levelDB 源码解析之debug环境">
+<meta property="og:title" content="levelDB 源码解析之debug环境和数据写入">
 <meta property="og:url" content="http://example.com/2023/08/24/levelDB-%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/index.html">
 <meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
 <meta property="og:description" content="前言leveldb 是google的大佬写的一个嵌入式的KV数据库。底层是使用的LSM-Tree 索引结构。本文主要涉及levelDB的数据写入，也就是Put 操作。我是个搞java的，C或者C++是不咋会，所以边看边学，可能比较啰嗦。 Debug环境搭建首先拉代码：  git clone https:&#x2F;&#x2F;github.com&#x2F;google&#x2F;leveldb.git  因为源码中的third_par">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="2023-08-24T13:20:12.000Z">
-<meta property="article:modified_time" content="2023-08-30T02:48:59.077Z">
+<meta property="article:modified_time" content="2023-09-04T01:37:15.633Z">
 <meta property="article:author" content="mingyouxiaozhu">
 <meta property="article:tag" content="levelDB">
 <meta name="twitter:card" content="summary">
@@ -37,10 +37,10 @@
 
 
 
-<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/08/24/levelDB-%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/","path":"2023/08/24/levelDB-源码解析/","title":"levelDB 源码解析之debug环境"}</script>
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/08/24/levelDB-%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/","path":"2023/08/24/levelDB-源码解析/","title":"levelDB 源码解析之debug环境和数据写入"}</script>
 
 <script class="next-config" data-name="calendar" type="application/json">""</script>
-<title>levelDB 源码解析之debug环境 | mingyouxiaozhu's blog</title>
+<title>levelDB 源码解析之debug环境和数据写入 | mingyouxiaozhu's blog</title>
   
 
 
@@ -105,7 +105,7 @@
       <div class="sidebar-panel-container">
         <!--noindex-->
         <div class="post-toc-wrap sidebar-panel">
-            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#Debug%E7%8E%AF%E5%A2%83%E6%90%AD%E5%BB%BA"><span class="nav-number">1.1.</span> <span class="nav-text">Debug环境搭建</span></a></li></ol></li></ol></div>
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#Debug%E7%8E%AF%E5%A2%83%E6%90%AD%E5%BB%BA"><span class="nav-number">1.1.</span> <span class="nav-text">Debug环境搭建</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%9A%84%E5%86%99%E5%85%A5"><span class="nav-number">1.2.</span> <span class="nav-text">数据的写入</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%86%99%E5%85%A5%E6%97%A5%E5%BF%97"><span class="nav-number">1.2.1.</span> <span class="nav-text">写入日志</span></a></li></ol></li></ol></li></ol></div>
         </div>
         <!--/noindex-->
 
@@ -118,12 +118,12 @@
   <nav class="site-state">
       <div class="site-state-item site-state-posts">
         <a href="/archives/">
-          <span class="site-state-item-count">11</span>
+          <span class="site-state-item-count">18</span>
           <span class="site-state-item-name">日志</span>
         </a>
       </div>
       <div class="site-state-item site-state-tags">
-        <span class="site-state-item-count">4</span>
+        <span class="site-state-item-count">5</span>
         <span class="site-state-item-name">标签</span>
       </div>
   </nav>
@@ -163,12 +163,12 @@
     </span>
 
     <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
-      <meta itemprop="name" content="levelDB 源码解析之debug环境 | mingyouxiaozhu's blog">
+      <meta itemprop="name" content="levelDB 源码解析之debug环境和数据写入 | mingyouxiaozhu's blog">
       <meta itemprop="description" content="">
     </span>
       <header class="post-header">
         <h1 class="post-title" itemprop="name headline">
-          levelDB 源码解析之debug环境
+          levelDB 源码解析之debug环境和数据写入
         </h1>
 
         <div class="post-meta-container">
@@ -186,7 +186,7 @@
         <i class="far fa-calendar-check"></i>
       </span>
       <span class="post-meta-item-text">更新于</span>
-      <time title="修改时间：2023-08-30 10:48:59" itemprop="dateModified" datetime="2023-08-30T10:48:59+08:00">2023-08-30</time>
+      <time title="修改时间：2023-09-04 09:37:15" itemprop="dateModified" datetime="2023-09-04T09:37:15+08:00">2023-09-04</time>
     </span>
 
   
@@ -221,6 +221,80 @@
 <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">leveldb_test(<span class="string">&quot;db/c_test.c&quot;</span>)</span><br><span class="line">leveldb_test(<span class="string">&quot;app/main.cpp&quot;</span>) # 加的这行</span><br></pre></td></tr></table></figure>
 
 <p>然后就可以在clion中看到一个叫main的test，直接可以debug。至于为什么估计需要看cmake 相关的知识，暂时不去管他，总之这样就可以直接debug了。如果是windows，cmake的环境只要做好了，其他的都是类似。在clion中可以直接debug。</p>
+<h2 id="数据的写入"><a href="#数据的写入" class="headerlink" title="数据的写入"></a>数据的写入</h2><p>本文暂时不去处理DB的初始化，而是 看PUT操作。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">db-&gt;Put(leveldb::WriteOptions(), key1, <span class="string">&quot;testvalue1&quot;</span>);</span><br></pre></td></tr></table></figure>
+
+<p>其中，writeOptions 标识此时是一个写入操作，写入的key就是key1，值就是testvalue1。写入的options 参数只有一个，就是是否sync。也就是写入pagecache  就返回还是刷到磁盘才返回，后者肯定速度慢一点。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Status <span class="title function_">DB::Put</span><span class="params">(<span class="type">const</span> WriteOptions&amp; opt, <span class="type">const</span> Slice&amp; key, <span class="type">const</span> Slice&amp; value)</span> </span><br></pre></td></tr></table></figure>
+
+<p>put 的入参为WriteOptions，Slice ，可以看到我们传入的string在这里变成了slice，感觉是c++ 的一个优化还是啥，因为Slice 中有 <code>Slice(const std::string&amp; s)</code> 这样的构造函数，回过来，Slice 可以看做一个变长的而且可以做比较的字符串，使用的是一个<code>c const char* data_; size_t size_;</code>来表示的。然后put操作会将当前传入的值变成一个<code>WriteBatch</code>。</p>
+<p>WriteBatch 包含了两个成员变量和六个函数：</p>
+<ul>
+<li><p>friend class WriteBatchInternal;</p>
+<ul>
+<li>friend 是一个C++的关键字，表示这个类可以访问私有成员变量</li>
+<li>这个对象没有成员变量，全部都是成员函数，用来操作WriteBatch 中的req</li>
+</ul>
+</li>
+<li><p>std::string rep_; </p>
+<ul>
+<li><p>写入的数据就放入到这个string中 在 write_batch.cc 中有标识：</p>
+<ul>
+<li><p>WriteBatch::rep_ :&#x3D;<br>  sequence: fixed64  &#x2F;&#x2F; 表示当前写入的seq，每一个写入都有一个seq，用来做类似于mvvc的版本控制的（？）<br>  count: fixed32  &#x2F;&#x2F; 当前bacth中写入的个数<br>  data: record[count] &#x2F;&#x2F;  写入的值，按照keylen+keyValue+dataLen+dataValue</p>
+<p>[ sequence: fixed64 ][ count: fixed32 ][ record[0] ][ record[1] ]…[ record[count-1] ]</p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p>Put方法首先就是将key和value放入到writebatch的req中，也就是上文中的data中的值。数据组织完毕。此时的req 的值为</p>
+<blockquote>
+<p>“\000\000\000\000\000\000\000\000\001\000\000\000\001\008testkey0\004aaaa”   </p>
+</blockquote>
+<p>在正式写入的方法中</p>
+<blockquote>
+<p>Status DBImpl::Write(const WriteOptions&amp; options, WriteBatch* updates) </p>
+</blockquote>
+<p>包含了下面几个操作：</p>
+<ol>
+<li>将Put操作封装为Writer，并且放到writers 队列中</li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">Writer <span class="title function_">w</span><span class="params">(&amp;mutex_)</span>; </span><br><span class="line">w.batch = updates;</span><br><span class="line">w.sync = options.sync;</span><br><span class="line">w.done = <span class="literal">false</span>;</span><br><span class="line"><span class="comment">// 加锁</span></span><br><span class="line">MutexLock <span class="title function_">l</span><span class="params">(&amp;mutex_)</span>;</span><br><span class="line"><span class="comment">// 放入队列中  std::deque&lt;Writer*&gt; writers_</span></span><br><span class="line">writers_.push_back(&amp;w);</span><br><span class="line"><span class="comment">// 如果当前的队列不是在头部，则等待。这里就可以控制写入是先来后到的顺序。因为push_back 是加锁的操作，而   且在push之前就已经加锁了。</span></span><br><span class="line"><span class="keyword">while</span> (!w.done &amp;&amp; &amp;w != writers_.front()) &#123;</span><br><span class="line">  w.cv.Wait();</span><br><span class="line">   <span class="comment">// 等待</span></span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 检查下是否已经完成写入，因为下面会有个合并当前写入的操作</span></span><br><span class="line"><span class="keyword">if</span> (w.done) &#123;</span><br><span class="line">  <span class="keyword">return</span> w.status;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<ol start="2">
+<li>上文的代码片段是将写入操作放入队列中,感觉就是和java的线程池中的Runnable 队列一样，将需要执行的work放在队列中。下面是写入前的一些操作：</li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// May temporarily unlock and wait.</span></span><br><span class="line">  Status status = MakeRoomForWrite(updates == nullptr); <span class="comment">// 确保当前的资源可以使用，涉及到mem和log，暂时不说明，主要就是为本次写入做资源的准备</span></span><br><span class="line">  <span class="type">uint64_t</span> last_sequence = versions_-&gt;LastSequence();<span class="comment">// 从version中获取当前最后的seq</span></span><br><span class="line">  Writer* last_writer = &amp;w;</span><br></pre></td></tr></table></figure>
+
+<ol start="3">
+<li>创建完空间和获取到seq，就开始执行写入操作</li>
+</ol>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (status.ok() &amp;&amp; updates != nullptr) &#123;  <span class="comment">// nullptr batch is for compactions</span></span><br><span class="line">   WriteBatch* write_batch = BuildBatchGroup(&amp;last_writer); <span class="comment">// 这里就是上文提到的，将此时队列中的write 合并为一个，一起写入</span></span><br><span class="line">    <span class="comment">// 将本次写入的seq 写入到batch中</span></span><br><span class="line">   WriteBatchInternal::SetSequence(write_batch, last_sequence + <span class="number">1</span>);</span><br><span class="line">   last_sequence += WriteBatchInternal::Count(write_batch);</span><br><span class="line">   &#123;</span><br><span class="line">    <span class="comment">// 注释A  </span></span><br><span class="line">   <span class="comment">// Add to log and apply to memtable.  We can release the lock</span></span><br><span class="line">   <span class="comment">// during this phase since &amp;w is currently responsible for logging</span></span><br><span class="line">   <span class="comment">// and protects against concurrent loggers and concurrent writes</span></span><br><span class="line">   <span class="comment">// into mem_. </span></span><br><span class="line">     mutex_.Unlock(); <span class="comment">//释放掉了写入queue中的</span></span><br><span class="line">       <span class="comment">// 写入到日志中</span></span><br><span class="line">     status = log_-&gt;AddRecord(WriteBatchInternal::Contents(write_batch));</span><br><span class="line">     <span class="type">bool</span> sync_error = <span class="literal">false</span>;</span><br><span class="line">     <span class="keyword">if</span> (status.ok() &amp;&amp; options.sync) &#123; <span class="comment">// 如果需要立即刷盘，就将数据刷盘</span></span><br><span class="line">       status = logfile_-&gt;Sync();</span><br><span class="line">       <span class="keyword">if</span> (!status.ok()) &#123;</span><br><span class="line">         sync_error = <span class="literal">true</span>;</span><br><span class="line">       &#125;</span><br><span class="line">     &#125;</span><br><span class="line">      <span class="comment">// 写入到内存中</span></span><br><span class="line">     <span class="keyword">if</span> (status.ok()) &#123;</span><br><span class="line">       status = WriteBatchInternal::InsertInto(write_batch, mem_);</span><br><span class="line">     &#125;</span><br><span class="line">     mutex_.Lock();</span><br><span class="line">     <span class="keyword">if</span> (sync_error) &#123;</span><br><span class="line">       RecordBackgroundError(status);</span><br><span class="line">     &#125;</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="keyword">if</span> (write_batch == tmp_batch_) tmp_batch_-&gt;Clear();</span><br><span class="line"><span class="comment">// 虽然本次是一次写入，但是每次写的seq 都是新增在seq中的，所以seq 应该是一个递增的值</span></span><br><span class="line">   versions_-&gt;SetLastSequence(last_sequence);</span><br><span class="line"> &#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p> 考虑下当前的场景，如果开始有t1,t2,t3 同时写入，此时t1 在writes的front，所以他可以执行上文3 中的代码，也就是将数据写入到log和mem，但是此时writers的front仍然是t1，所以在将队列中所有数据（BuildBatchGroup 会将当前队列中的数据全部变成一个batch）准备好后，如果此时t4,t5,t6线程进行并发写入，他们也会在上文2的代码中被新增到队列尾部，但是不会进入到写操作中，但是由于此时我们的writes的add操作也是被加锁了，所以t4,t5,t6应该是可以加到队列中，但是因为他们都不是front，所以都会在等待，一直到front变成他们中的某一个。</p>
+<p>等到当前队列中的数据都写入到日志和内存中后，这个时候会再次获取到锁，判断当前的写入是否出现异常，然后释放当前写入的资源，也就是tmp_batch （BuildBatchGroup）核心就是将写入封装为这个tmp_batch。这里的异常主要是判断是否磁盘有异常，如果有就直接将后续所有的写入全部唤醒为异常状态。清理动作做完后就将sequence进行修改。可以看到sequence的获取和修改都是在加锁的状态下完成的。</p>
+<ol start="4">
+<li>当前新写入成功后，就可以释放后续的写入线程了</li>
+</ol>
+   <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line">   </span><br><span class="line"><span class="keyword">while</span> (<span class="literal">true</span>) &#123;</span><br><span class="line">  Writer* ready = writers_.front();</span><br><span class="line">  writers_.pop_front();</span><br><span class="line">  <span class="keyword">if</span> (ready != &amp;w) &#123;</span><br><span class="line">    ready-&gt;status = status;</span><br><span class="line">    ready-&gt;done = <span class="literal">true</span>;</span><br><span class="line">    ready-&gt;cv.Signal();</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">if</span> (ready == last_writer) <span class="keyword">break</span>;</span><br><span class="line">&#125;</span><br><span class="line">   </span><br><span class="line"><span class="comment">// Notify new head of write queue</span></span><br><span class="line"><span class="keyword">if</span> (!writers_.empty()) &#123;</span><br><span class="line">  writers_.front()-&gt;cv.Signal();</span><br><span class="line">&#125;</span><br><span class="line">   </span><br><span class="line"><span class="keyword">return</span> status;</span><br></pre></td></tr></table></figure>
+
+<p>   这里的唤醒核心就是将writers的队列，这个last_writer 指向的就是上文中已经被写入的最后一个writer，也就是说会挨个唤醒和pop出队列，一直到当前写入批次的最后一个。</p>
+<p>   如果writers 不为空，则继续唤醒队头，执行上面的操作。</p>
+<blockquote>
+<p>通过将数据的写入进行入队控制写入的顺序，然后将队列中的当前大小（通过锁确定合并写入队列不持续增加）进行合并写入，然后写入日志和内存，最后挨个唤醒。一个锁做到了控制队列，合并写入等功能。</p>
+</blockquote>
+<h3 id="写入日志"><a href="#写入日志" class="headerlink" title="写入日志"></a>写入日志</h3><p>写入日志也就是上文的</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">log_-&gt;AddRecord(WriteBatchInternal::Contents(write_batch));</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+
+
+
+
 
     </div>
 
@@ -242,8 +316,8 @@
                 </a>
             </div>
             <div class="post-nav-item">
-                <a href="/2023/08/30/levelDB%E4%B9%8Bcoding/" rel="next" title="levelDB之Vrint">
-                  levelDB之Vrint <i class="fa fa-chevron-right"></i>
+                <a href="/2023/08/30/levelDB%E4%B9%8Bcoding/" rel="next" title="levelDB之Varint">
+                  levelDB之Varint <i class="fa fa-chevron-right"></i>
                 </a>
             </div>
           </div>

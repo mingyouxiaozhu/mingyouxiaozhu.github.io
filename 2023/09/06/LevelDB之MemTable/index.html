@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha256-HtsXJanqjKTc8vVQjO4YMhiqFoXkfBsjBWcX91T1jr8=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"example.com","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.17.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="前言​	在 LevelDB 中，写完 WAL 日志以后，就可以将数据写入到 MemTable 了。MemTable 是 LSM-Tree必不可缺的一个组件，主要作用如下：  写入的时候作为随机写转换为顺序写的buffer也是对数据进行排序的处理器 读取的时候作为热点数据（刚写入的数据）的cache，加快读取速度 SSTable 的数据来源，初始的SSTable都是一个MemTable的持久化  在">
+<meta property="og:type" content="article">
+<meta property="og:title" content="LevelDB之MemTable">
+<meta property="og:url" content="http://example.com/2023/09/06/LevelDB%E4%B9%8BMemTable/index.html">
+<meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
+<meta property="og:description" content="前言​	在 LevelDB 中，写完 WAL 日志以后，就可以将数据写入到 MemTable 了。MemTable 是 LSM-Tree必不可缺的一个组件，主要作用如下：  写入的时候作为随机写转换为顺序写的buffer也是对数据进行排序的处理器 读取的时候作为热点数据（刚写入的数据）的cache，加快读取速度 SSTable 的数据来源，初始的SSTable都是一个MemTable的持久化  在">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/memTable_innerkey1.png">
+<meta property="og:image" content="http://image.mingyouxiaozhu.top/blog/memP_lookUpkey.png">
+<meta property="article:published_time" content="2023-09-06T02:21:15.000Z">
+<meta property="article:modified_time" content="2023-09-06T08:56:32.998Z">
+<meta property="article:author" content="mingyouxiaozhu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://image.mingyouxiaozhu.top/blog/memTable_innerkey1.png">
+
+
+<link rel="canonical" href="http://example.com/2023/09/06/LevelDB%E4%B9%8BMemTable/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/09/06/LevelDB%E4%B9%8BMemTable/","path":"2023/09/06/LevelDB之MemTable/","title":"LevelDB之MemTable"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>LevelDB之MemTable | mingyouxiaozhu's blog</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">mingyouxiaozhu's blog</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84"><span class="nav-number">2.</span> <span class="nav-text">数据结构</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#Add"><span class="nav-number">2.1.</span> <span class="nav-text">Add</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#Add%E4%B8%AD%E7%9A%84%E9%94%81"><span class="nav-number">2.1.1.</span> <span class="nav-text">Add中的锁</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%A0%A1%E9%AA%8C%E7%A9%BA%E9%97%B4%E5%AE%B9%E9%87%8F"><span class="nav-number">2.1.2.</span> <span class="nav-text">校验空间容量</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%90%88%E5%B9%B6%E6%93%8D%E4%BD%9C"><span class="nav-number">2.1.3.</span> <span class="nav-text">合并操作</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%BC%80%E5%A7%8B%E5%86%99%E5%85%A5MemTable"><span class="nav-number">2.1.4.</span> <span class="nav-text">开始写入MemTable</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Add-%E6%96%B9%E6%B3%95"><span class="nav-number">2.1.5.</span> <span class="nav-text">Add 方法</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Get"><span class="nav-number">2.2.</span> <span class="nav-text">Get</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">3.</span> <span class="nav-text">总结</span></a></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">mingyouxiaozhu</p>
+  <div class="site-description" itemprop="description">enjoy life ,enjoy coding</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">18</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/09/06/LevelDB%E4%B9%8BMemTable/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="LevelDB之MemTable | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          LevelDB之MemTable
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+      
+
+      <time title="创建时间：2023-09-06 10:21:15 / 修改时间：16:56:32" itemprop="dateCreated datePublished" datetime="2023-09-06T10:21:15+08:00">2023-09-06</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p>​	在 LevelDB 中，写完 WAL 日志以后，就可以将数据写入到 MemTable 了。MemTable 是 LSM-Tree必不可缺的一个组件，主要作用如下：</p>
+<ol>
+<li>写入的时候作为随机写转换为顺序写的buffer也是对数据进行排序的处理器</li>
+<li>读取的时候作为热点数据（刚写入的数据）的cache，加快读取速度</li>
+<li>SSTable 的数据来源，初始的SSTable都是一个MemTable的持久化</li>
+</ol>
+<p>在具体的使用中，MemTable 需要在内存中开辟堆空间，所以需要内存管理。客户端一般写入MemTable后就可以返回成功。</p>
+<p>本文将针对MemTable 在 LevelDB 中的实现做一个简单的介绍，一起将客户端的写入过程也做了个介绍，会涉及到LevelDB如何控制并发等。</p>
+<p>MemTable的实现在<code>db/memtable.h</code>和<code>db/memtable.cc</code>。内存管理的是实现是在<code>util/arena.h</code></p>
+<h1 id="数据结构"><a href="#数据结构" class="headerlink" title="数据结构"></a>数据结构</h1><p>MemTable 数据结构就是前面提到过的SkipList。LevelDB 是将key和value组合在一起成为一个SkipList中的Node，所以MemTable中还包含了一个比较器。这里对SkipList不再做具体的介绍，如果想深入了解，可以看下我前面写的SkipList原理和Java实现。</p>
+<p>在<code>db/memtable.h</code>中的具体实现为：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">MemTable</span> &#123;</span></span><br><span class="line"> public:</span><br><span class="line">  <span class="comment">// MemTables are reference counted.  The initial reference count</span></span><br><span class="line">  <span class="comment">// is zero and the caller must call Ref() at least once.</span></span><br><span class="line">  explicit <span class="title function_">MemTable</span><span class="params">(<span class="type">const</span> InternalKeyComparator&amp; comparator)</span>;</span><br><span class="line"></span><br><span class="line">  MemTable(<span class="type">const</span> MemTable&amp;) = delete;</span><br><span class="line">  MemTable&amp; operator=(<span class="type">const</span> MemTable&amp;) = delete;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Increase reference count.</span></span><br><span class="line">  <span class="type">void</span> <span class="title function_">Ref</span><span class="params">()</span> &#123; ++refs_; &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Drop reference count.  Delete if no more references exist.</span></span><br><span class="line">  <span class="type">void</span> <span class="title function_">Unref</span><span class="params">()</span> &#123;</span><br><span class="line">    --refs_;</span><br><span class="line">    assert(refs_ &gt;= <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">if</span> (refs_ &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">      delete this;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Returns an estimate of the number of bytes of data in use by this</span></span><br><span class="line">  <span class="comment">// data structure. It is safe to call when MemTable is being modified.</span></span><br><span class="line">  <span class="type">size_t</span> <span class="title function_">ApproximateMemoryUsage</span><span class="params">()</span>;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Return an iterator that yields the contents of the memtable.</span></span><br><span class="line">  <span class="comment">//</span></span><br><span class="line">  <span class="comment">// The caller must ensure that the underlying MemTable remains live</span></span><br><span class="line">  <span class="comment">// while the returned iterator is live.  The keys returned by this</span></span><br><span class="line">  <span class="comment">// iterator are internal keys encoded by AppendInternalKey in the</span></span><br><span class="line">  <span class="comment">// db/format.&#123;h,cc&#125; module.</span></span><br><span class="line">  Iterator* <span class="title function_">NewIterator</span><span class="params">()</span>;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Add an entry into memtable that maps key to value at the</span></span><br><span class="line">  <span class="comment">// specified sequence number and with the specified type.</span></span><br><span class="line">  <span class="comment">// Typically value will be empty if type==kTypeDeletion.</span></span><br><span class="line">  <span class="type">void</span> <span class="title function_">Add</span><span class="params">(SequenceNumber seq, ValueType type, <span class="type">const</span> Slice&amp; key,</span></span><br><span class="line"><span class="params">           <span class="type">const</span> Slice&amp; value)</span>;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// If memtable contains a value for key, store it in *value and return true.</span></span><br><span class="line">  <span class="comment">// If memtable contains a deletion for key, store a NotFound() error</span></span><br><span class="line">  <span class="comment">// in *status and return true.</span></span><br><span class="line">  <span class="comment">// Else, return false.</span></span><br><span class="line">  <span class="type">bool</span> <span class="title function_">Get</span><span class="params">(<span class="type">const</span> LookupKey&amp; key, <span class="built_in">std</span>::<span class="built_in">string</span>* value, Status* s)</span>;</span><br><span class="line"></span><br><span class="line"> private:</span><br><span class="line">  friend <span class="class"><span class="keyword">class</span> <span class="title">MemTableIterator</span>;</span></span><br><span class="line">  friend <span class="class"><span class="keyword">class</span> <span class="title">MemTableBackwardIterator</span>;</span></span><br><span class="line"></span><br><span class="line">  <span class="class"><span class="keyword">struct</span> <span class="title">KeyComparator</span> &#123;</span></span><br><span class="line">    <span class="type">const</span> InternalKeyComparator comparator;</span><br><span class="line">    explicit <span class="title function_">KeyComparator</span><span class="params">(<span class="type">const</span> InternalKeyComparator&amp; c)</span> : <span class="title function_">comparator</span><span class="params">(c)</span> &#123;&#125;</span><br><span class="line">    <span class="type">int</span> <span class="title function_">operator</span><span class="params">()</span><span class="params">(<span class="type">const</span> <span class="type">char</span>* a, <span class="type">const</span> <span class="type">char</span>* b)</span> <span class="type">const</span>;</span><br><span class="line">  &#125;;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">typedef</span> SkipList&lt;<span class="type">const</span> <span class="type">char</span>*, KeyComparator&gt; Table;</span><br><span class="line"></span><br><span class="line">  ~MemTable();  <span class="comment">// Private since only Unref() should be used to delete it</span></span><br><span class="line"></span><br><span class="line">  KeyComparator comparator_;</span><br><span class="line">  <span class="type">int</span> refs_;</span><br><span class="line">  Arena arena_;</span><br><span class="line">  Table table_;</span><br><span class="line">  <span class="type">void</span> <span class="title function_">PrintBuffer</span><span class="params">(<span class="type">char</span>* buf, <span class="type">size_t</span> i)</span>;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上面的实现中可以看到，MemTable 拒绝复制当前内部的数据，或者说拒绝使用拷贝构造函数和赋值来拷贝当前的数据。</p>
+<blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">MemTable(<span class="type">const</span> MemTable&amp;) = delete;</span><br><span class="line">MemTable&amp; operator=(<span class="type">const</span> MemTable&amp;) = delete;</span><br><span class="line">这两个方法的代码指的是禁止了MemTable的复制，也就是说一个MemTable不能通过拷贝构造函数构创建新对象的方式复制当前MemTable对象。也不能使用赋值运算符来创建一个新的对象并且指向当前的对象，赋值运算符也是会拷贝数据的。</span><br></pre></td></tr></table></figure>
+</blockquote>
+<p>能够创建一个MemTable的方式只有使用传入一个<code>InternalKeyComparator</code>。也不能够复制当前MemTable中的数据。</p>
+<p>MemTable中还有一个Ref，这个和gc中的引用是一个意思，如果这个refs中的数据没有到0，说明有人还在使用这个MemTable，那么就不能进行内存释放。</p>
+<p><code>ApproximateMemoryUsage</code>当前已经使用的内存，这个命名是说这个是一个大概的值，我觉得挺神奇的，后面看下为什么是大概的值，是否可能会有并发访问结果不一样的情况。</p>
+<p><code>NewIterator</code>创建一个迭代器</p>
+<p>提供的读写接口就两个，一个是Get 一个是Add：</p>
+<ul>
+<li>Add 返回值是void 入参分别为<ul>
+<li>SequenceNumber seq 当前写入的sequence</li>
+<li>ValueType type &#x2F;&#x2F; 类型，该类型只有两种，一个是删除，一个是写入</li>
+<li>const Slice&amp; key &#x2F;&#x2F; 写入的key</li>
+<li>const Slice&amp; value)&#x2F;&#x2F;写入的Value</li>
+</ul>
+</li>
+<li>Get 返回值是true 入参分别为：<ul>
+<li>const LookupKey&amp; key &#x2F;&#x2F; 查询的Key值</li>
+<li>std::string* value 如果有数据就会写在value里面，也就是如果返回为true，那么值就在value里面</li>
+<li>Status* s 如果查询的值已经被删除，那么status会有一个error但是函数会返回true</li>
+</ul>
+</li>
+</ul>
+<p>私有域中主要包含了两个迭代器，Key的比较器，内存分配的Arena 和Table，这个Table就是SkipList。在析构函数里说的很清楚的就是只有在Unref里面可以调用，也就是当refs_的值小于等于0 的时候就可以释放当前的内存。</p>
+<h2 id="Add"><a href="#Add" class="headerlink" title="Add"></a>Add</h2><p>add 是将当前的值写入到MemTable中，为了更好理解里面的并发控制和sequence，直接看db的Write操作，是在<code>db/db_impl.cc</code>中的DBImpl::Write中，具体实现如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br></pre></td><td class="code"><pre><span class="line">Status <span class="title function_">DBImpl::Write</span><span class="params">(<span class="type">const</span> WriteOptions&amp; options, WriteBatch* updates)</span> &#123;</span><br><span class="line">  Writer <span class="title function_">w</span><span class="params">(&amp;mutex_)</span>; <span class="comment">// 每次写入都会封装为一个Writer，这个在前面的Log中有了解，注意的是，Writer中传入了互斥锁</span></span><br><span class="line">  w.batch = updates; <span class="comment">// 写入操作在Put的是已经封装为了WriteBatch</span></span><br><span class="line">  w.sync = options.sync; <span class="comment">// 判断当前是否同步刷盘，也是Log中的操作</span></span><br><span class="line">  w.done = <span class="literal">false</span>; <span class="comment">// 当前写入状态初始为false</span></span><br><span class="line">	<span class="comment">// 锁a</span></span><br><span class="line">  MutexLock <span class="title function_">l</span><span class="params">(&amp;mutex_)</span>; <span class="comment">// 首先根据信号量初始化锁</span></span><br><span class="line">  writers_.push_back(&amp;w); <span class="comment">// 将写入操作放入一个writers队列中，注意因为有锁，所以同一时间只会有一个线程进入到writers中</span></span><br><span class="line">  <span class="keyword">while</span> (!w.done &amp;&amp; &amp;w != writers_.front()) &#123;</span><br><span class="line">    w.cv.Wait(); <span class="comment">// 需要注意的是，在Wait阶段是会释放锁的</span></span><br><span class="line">  &#125; <span class="comment">// 使用队头的writer作为本次写入的writer</span></span><br><span class="line">  <span class="keyword">if</span> (w.done) &#123; <span class="comment">// 如果本次的写入已经被完成，则直接返回写入的状态</span></span><br><span class="line">    <span class="keyword">return</span> w.status;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// May temporarily unlock and wait.</span></span><br><span class="line">  Status status = MakeRoomForWrite(updates == nullptr); <span class="comment">// 创建空间用于写入磁盘或者memTable</span></span><br><span class="line">  <span class="type">uint64_t</span> last_sequence = versions_-&gt;LastSequence(); <span class="comment">// 从当前的version中获取到最后使用的sequence</span></span><br><span class="line">  Writer* last_writer = &amp;w; <span class="comment">//本次写入的writer赋值给last_writer,注意为什么这里明明&amp;w是队头却是lastwriter，是因为在后面的BuildBatchGroup方法中，会将本次批量写入的最后一个writer赋值给他</span></span><br><span class="line">  <span class="keyword">if</span> (status.ok() &amp;&amp; updates != nullptr) &#123;  <span class="comment">// nullptr batch is for compactions</span></span><br><span class="line">    WriteBatch* write_batch = BuildBatchGroup(&amp;last_writer); <span class="comment">// 将当前队列中所有的writer里面的数据合并为一次写入</span></span><br><span class="line">    WriteBatchInternal::SetSequence(write_batch, last_sequence + <span class="number">1</span>);<span class="comment">// 设置本次批量写入的sequence，sequence每次写入都是递增的，保证了写入的顺序，也能够进行读取的MVVC</span></span><br><span class="line">    last_sequence += WriteBatchInternal::Count(write_batch); <span class="comment">// 更新当前的lastSequence，write_batch 中包含了当前数据的大大小</span></span><br><span class="line">    <span class="comment">// Add to log and apply to memtable.  We can release the lock</span></span><br><span class="line">    <span class="comment">// during this phase since &amp;w is currently responsible for logging</span></span><br><span class="line">    <span class="comment">// and protects against concurrent loggers and concurrent writes</span></span><br><span class="line">    <span class="comment">// into mem_.</span></span><br><span class="line">    &#123;</span><br><span class="line">      mutex_.Unlock(); <span class="comment">// 释放队列锁，此时可以继续写入writers队列了。但是由于当前的writer 没有从队头移除，所以此时仍然等待在 w.cv.Wait();中</span></span><br><span class="line">      status = log_-&gt;AddRecord(WriteBatchInternal::Contents(write_batch)); <span class="comment">// 写入Log文件</span></span><br><span class="line">      <span class="type">bool</span> sync_error = <span class="literal">false</span>; </span><br><span class="line">      <span class="keyword">if</span> (status.ok() &amp;&amp; options.sync) &#123; <span class="comment">// 写入成功，是否同步刷盘</span></span><br><span class="line">        status = logfile_-&gt;Sync();</span><br><span class="line">        <span class="keyword">if</span> (!status.ok()) &#123;</span><br><span class="line">          sync_error = <span class="literal">true</span>;</span><br><span class="line">        &#125;</span><br><span class="line">      &#125;</span><br><span class="line">      <span class="keyword">if</span> (status.ok()) &#123;</span><br><span class="line">        status = WriteBatchInternal::InsertInto(write_batch, mem_); <span class="comment">// 此处写入mem</span></span><br><span class="line">      &#125;</span><br><span class="line">      mutex_.Lock(); <span class="comment">// 再次获取到锁，暂停线程写入writers，注意的是，这个锁的释放是等到本次线程退出方法，调用MutexLock的析构函数达到释放锁的目的</span></span><br><span class="line">      <span class="keyword">if</span> (sync_error) &#123;</span><br><span class="line">        <span class="comment">// The state of the log file is indeterminate: the log record we</span></span><br><span class="line">        <span class="comment">// just added may or may not show up when the DB is re-opened.</span></span><br><span class="line">        <span class="comment">// So we force the DB into a mode where all future writes fail.</span></span><br><span class="line">        RecordBackgroundError(status);</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (write_batch == tmp_batch_) tmp_batch_-&gt;Clear(); <span class="comment">// 清理tmp_batch</span></span><br><span class="line">    versions_-&gt;SetLastSequence(last_sequence);<span class="comment">// 设置sequence 到version中</span></span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">while</span> (<span class="literal">true</span>) &#123;</span><br><span class="line">    Writer* ready = writers_.front();</span><br><span class="line">    writers_.pop_front();</span><br><span class="line">    <span class="keyword">if</span> (ready != &amp;w) &#123;</span><br><span class="line">      ready-&gt;status = status;</span><br><span class="line">      ready-&gt;done = <span class="literal">true</span>;</span><br><span class="line">      ready-&gt;cv.Signal();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (ready == last_writer) <span class="keyword">break</span>;</span><br><span class="line">  &#125; <span class="comment">// 依次唤醒本次写入的后续writer，此时会从上面的while中继续调用，如果是头节点，而且已经被写入则直接返回，否则就继续执行上面的代码,该循环一直到本次写入的最后一个writer位置</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// Notify new head of write queue</span></span><br><span class="line">  <span class="keyword">if</span> (!writers_.empty()) &#123; <span class="comment">// 唤醒下一次调用</span></span><br><span class="line">    writers_.front()-&gt;cv.Signal();</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> status;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>算得上逐行解释了上面的代码。接下来看下如何使用一个互斥锁实现兼顾多线程顺序写入和效率的。</p>
+<h3 id="Add中的锁"><a href="#Add中的锁" class="headerlink" title="Add中的锁"></a>Add中的锁</h3><p>先来看最开始的while循环中的cv.Wait()方法，在<code>port/port_stdcxx.h</code>中，实现为：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">void Wait() &#123;</span><br><span class="line">  std::unique_lock&lt;std::mutex&gt; lock(mu_-&gt;mu_, std::adopt_lock);//ustd::unique_lock能实现自动加锁与解锁功能，第一个参数是指的传入的参数进行上锁，如果有第二个参数即 std::adopt_lock:表示这个互斥量已经被lock()过了,无需在本次构造函数中加锁，否则会报错。</span><br><span class="line"></span><br><span class="line">  cv_.wait(lock); // wait 方法会对互斥锁解锁，然后阻塞等待，一直到被notify唤醒。唤醒之后会再次获取锁，一直到获取锁成功后才继续往下执行。 </span><br><span class="line">  lock.release(); // 检测当前锁是否没有释放，如果是则释放掉</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>也就是说每次写入在Wait过程中，会释放当前获取的锁，允许后面的writer 写入到writers中。</p>
+<p>下面举例说明：</p>
+<p>如果当前有<code>t1</code>,<code>t2</code>,<code>t3</code>,并发写入。假设初始阶段writers为空：</p>
+<ol>
+<li><code>t1</code>,<code>t2</code>,<code>t3</code> 写入的时候，首先假设<code>t1</code> 首先执行MutexLock l(&amp;mutex_); 即获取到了mutex_的锁，<code>t1</code> 被写入到writers中，而且是作为队头，所以不需要进入Wait状态，直接开始写，此时<code>t2</code>,<code>t3</code> 在等待获取锁。</li>
+<li><code>t1</code> 执行到了mutex_.Unlock();此时<code>t1</code>的writer 还在队头，所以<code>t2</code>,<code>t3</code> 被写入到writers中等待唤醒。</li>
+<li>此时writers中包含了<code>t2</code>,<code>t3</code>，但是<code>t1</code>只会写自己的数据，因为他是在合并后才释放锁让<code>t2</code>,<code>t3</code>进入的.<code>t1</code>先写入Log，然后写入MemTable，此时不存在并发写的情况，因为其他的并发都会被放到writers中。</li>
+<li>等到<code>t1</code>将自己的数据写入到Log 和MemTable后，<code>t1</code> 再次获取到锁，此时阻塞writers的中继续新增writer。</li>
+<li>因为<code>t1</code> 的没有进行操作合并，所以他不会唤醒其他的写，只会唤醒下一次的队头，但是此时并没有释放锁。只是唤醒了<code>t2</code>,<code>t2</code>在等待<code>t1</code>释放锁。</li>
+<li><code>t1</code> 本次写入返回，方法栈中的MutexLock 被释放，然后<code>t2</code>获取到锁，此时writers中的数据有<code>t3</code>和<code>t2</code></li>
+<li><code>t2</code> 的操作相比<code>t1</code> 多了一个合并数据和唤醒的动作。这里就不赘述了。</li>
+</ol>
+<p>上文中一个就涉及到1个锁，却能够有效的将数据的顺序和并发全部完成。使用一个队列，将多线程写入转换为单线程写入，保证了顺序，也有效地保证了效率。</p>
+<h3 id="校验空间容量"><a href="#校验空间容量" class="headerlink" title="校验空间容量"></a>校验空间容量</h3><p>在写入之前，还需要看下当前的内存空间，和level0的文件数，实现就在<code>db/db_impl.cc</code>的MakeRoomForWrite方法中：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br></pre></td><td class="code"><pre><span class="line">Status <span class="title function_">DBImpl::MakeRoomForWrite</span><span class="params">(<span class="type">bool</span> force)</span> &#123;</span><br><span class="line">  mutex_.AssertHeld(); <span class="comment">// 确认当前的线程获取到了锁</span></span><br><span class="line">  assert(!writers_.empty()); <span class="comment">// 有writer 操作</span></span><br><span class="line">  <span class="type">bool</span> allow_delay = !force; <span class="comment">// 是否运行缓冲，默认是1ms</span></span><br><span class="line">  Status s; <span class="comment">// 返回的状态</span></span><br><span class="line">  <span class="keyword">while</span> (<span class="literal">true</span>) &#123;</span><br><span class="line">    <span class="keyword">if</span> (!bg_error_.ok()) &#123; <span class="comment">// 这个bg_error是后台合并level0 的时候的一个操作</span></span><br><span class="line">      <span class="comment">// Yield previous error</span></span><br><span class="line">      s = bg_error_;</span><br><span class="line">      <span class="keyword">break</span>;</span><br><span class="line">      <span class="comment">//1 如果允许等待（正常写入可以等待。force==updates==nullptr）,并且当前的0层</span></span><br><span class="line">      <span class="comment">// 文件触发了需要等待的条件（0 层文件大于等于8）</span></span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (allow_delay &amp;&amp; versions_-&gt;NumLevelFiles(<span class="number">0</span>) &gt;=</span><br><span class="line">                                  config::kL0_SlowdownWritesTrigger) &#123;</span><br><span class="line">      <span class="comment">// We are getting close to hitting a hard limit on the number of</span></span><br><span class="line">      <span class="comment">// L0 files.  Rather than delaying a single write by several</span></span><br><span class="line">      <span class="comment">// seconds when we hit the hard limit, start delaying each</span></span><br><span class="line">      <span class="comment">// individual write by 1ms to reduce latency variance.  Also,</span></span><br><span class="line">      <span class="comment">// this delay hands over some CPU to the compaction thread in</span></span><br><span class="line">      <span class="comment">// case it is sharing the same core as the writer.</span></span><br><span class="line">      mutex_.Unlock();<span class="comment">// 首先会释放锁，因为此时会等待操作进行完成，没必要不让后续的写入进入</span></span><br><span class="line">      env_-&gt;SleepForMicroseconds(<span class="number">1000</span>);<span class="comment">// 等到1ms</span></span><br><span class="line">      allow_delay = <span class="literal">false</span>;  <span class="comment">// Do not delay a single write more than once,每次写入最多运行等待一次</span></span><br><span class="line">      mutex_.Lock(); <span class="comment">// 加锁，说明要开始干活了</span></span><br><span class="line">      <span class="comment">//2 如果当前的内存足够，而且level0 的文件数量没有超过最大，说明有足够的内存和文件，直接返回stats</span></span><br><span class="line">        <span class="comment">// write_buffer_size 大小为4MB，也就是说一个内存文件大小一般在大于4MB的时候就需要切换了</span></span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (!force &amp;&amp;</span><br><span class="line">               (mem_-&gt;ApproximateMemoryUsage() &lt;= options_.write_buffer_size)) &#123;</span><br><span class="line">      <span class="comment">// There is room in current memtable</span></span><br><span class="line">      <span class="keyword">break</span>;</span><br><span class="line">      <span class="comment">//3 如果正在执行内存文件的合并，则等待内存文件合并完成</span></span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (imm_ != nullptr) &#123; </span><br><span class="line">      <span class="comment">// We have filled up the current memtable, but the previous</span></span><br><span class="line">      <span class="comment">// one is still being compacted, so we wait.</span></span><br><span class="line">      Log(options_.info_log, <span class="string">&quot;Current memtable full; waiting...\n&quot;</span>);</span><br><span class="line">      background_work_finished_signal_.Wait();</span><br><span class="line">      <span class="comment">//4 如果有太多的level0层文件（默认12）。则等待文件合并完成</span></span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (versions_-&gt;NumLevelFiles(<span class="number">0</span>) &gt;= config::kL0_StopWritesTrigger) &#123;</span><br><span class="line">      <span class="comment">// There are too many level-0 files.</span></span><br><span class="line">      Log(options_.info_log, <span class="string">&quot;Too many L0 files; waiting...\n&quot;</span>);</span><br><span class="line">      background_work_finished_signal_.Wait();</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      <span class="comment">//5 如果当前的文件数量小于8，内存资源不够，而且没有进行合并，则说明需要创建一个新的内存文件</span></span><br><span class="line">      <span class="comment">// Attempt to switch to a new memtable and trigger compaction of old</span></span><br><span class="line">      assert(versions_-&gt;PrevLogNumber() == <span class="number">0</span>);</span><br><span class="line">       <span class="comment">// 文件的名称也就是num 也是version提供的</span></span><br><span class="line">      <span class="type">uint64_t</span> new_log_number = versions_-&gt;NewFileNumber();</span><br><span class="line">      WritableFile* lfile = nullptr;</span><br><span class="line">        <span class="comment">// 创建可写文件，创建失败则说明岗前的num可以重复使用</span></span><br><span class="line">      s = env_-&gt;NewWritableFile(LogFileName(dbname_, new_log_number), &amp;lfile);</span><br><span class="line">      <span class="keyword">if</span> (!s.ok()) &#123;</span><br><span class="line">        <span class="comment">// Avoid chewing through file number space in a tight loop.</span></span><br><span class="line">        versions_-&gt;ReuseFileNumber(new_log_number);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">      &#125;</span><br><span class="line">	<span class="comment">// 释放当前的Log文件</span></span><br><span class="line">      delete log_;</span><br><span class="line">	<span class="comment">// 关闭当前的Log文件</span></span><br><span class="line">      s = logfile_-&gt;Close();</span><br><span class="line">      <span class="keyword">if</span> (!s.ok()) &#123;</span><br><span class="line">        <span class="comment">// We may have lost some data written to the previous log file.</span></span><br><span class="line">        <span class="comment">// Switch to the new log file anyway, but record as a background</span></span><br><span class="line">        <span class="comment">// error so we do not attempt any more writes.</span></span><br><span class="line">        <span class="comment">//</span></span><br><span class="line">        <span class="comment">// We could perhaps attempt to save the memtable corresponding</span></span><br><span class="line">        <span class="comment">// to log file and suppress the error if that works, but that</span></span><br><span class="line">        <span class="comment">// would add more complexity in a critical code path.</span></span><br><span class="line">        RecordBackgroundError(s);</span><br><span class="line">      &#125;</span><br><span class="line">        <span class="comment">// 释放内存</span></span><br><span class="line">      delete logfile_;</span><br><span class="line">	<span class="comment">// 将上面创建的文件复制写Log，成为新的Log日志文件</span></span><br><span class="line">      logfile_ = lfile;</span><br><span class="line">        <span class="comment">// 设置num</span></span><br><span class="line">      logfile_number_ = new_log_number;</span><br><span class="line">        <span class="comment">// 将创建的文件赋值给Log中的writer</span></span><br><span class="line">      log_ = new <span class="built_in">log</span>::Writer(lfile);</span><br><span class="line">      <span class="comment">// 将当前mem_ 的指针复制给imm_，说明当前的mem已经准备刷到level0 了。</span></span><br><span class="line">      imm_ = mem_;</span><br><span class="line">       <span class="comment">// 设置是has_imm_ 为true，这里的 memory_order_release 前面说过，就是不允许指令重排</span></span><br><span class="line">      has_imm_.store(<span class="literal">true</span>, <span class="built_in">std</span>::memory_order_release);</span><br><span class="line">        <span class="comment">// 创建新的MemTable，传入当前的比较器</span></span><br><span class="line">      mem_ = new MemTable(internal_comparator_);</span><br><span class="line">      <span class="comment">// 给当前的mem 添加引用</span></span><br><span class="line">      mem_-&gt;Ref();</span><br><span class="line">      force = <span class="literal">false</span>;  <span class="comment">// Do not force another compaction if have room</span></span><br><span class="line">        <span class="comment">//尝试调用后台合并</span></span><br><span class="line">      MaybeScheduleCompaction();</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> s;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里分配的空间核心还是内存是否超过4MB，以及当前level0 的数据是否超过配置的阈值。如果说调大上面的值肯定可以提高一定的吞吐量。但是后期合并的数据量也对应会增加，个人觉得如果key，value 都比较小，则4MB就足够了，但是如果每次都是超大的key和value，就可以考虑调大方法中的参数，避免频繁合并。</p>
+<h3 id="合并操作"><a href="#合并操作" class="headerlink" title="合并操作"></a>合并操作</h3><p>合并操作个人觉得没有什么好了解的，里面有个小tips就是直接对writers的迭代iter++ 这样可以有效的避免其实只有一个还需要走下面的合并操作。</p>
+<h3 id="开始写入MemTable"><a href="#开始写入MemTable" class="headerlink" title="开始写入MemTable"></a>开始写入MemTable</h3><p>在写入完Log 后就开始执行写入MemTable了。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"> status = WriteBatchInternal::InsertInto(write_batch, mem_);</span><br><span class="line">Status <span class="title function_">WriteBatchInternal::InsertInto</span><span class="params">(<span class="type">const</span> WriteBatch* b, MemTable* memtable)</span> &#123;</span><br><span class="line">  MemTableInserter inserter;</span><br><span class="line">  inserter.sequence_ = WriteBatchInternal::Sequence(b);</span><br><span class="line">  inserter.mem_ = memtable;</span><br><span class="line">  <span class="keyword">return</span> b-&gt;Iterate(&amp;inserter);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>首先是创建了一个inserter的对象，赋值mem和sequence，然后调用WriteBatch的迭代器写入。这么封装有什么好处呢？为什么不在MemTable里做一个循环直接往里面写呢？个人觉得是为了解耦，MemTable插入的数据就是简单的Slice 对象，而不用去考虑里面的batch，通过迭代器解析然后插入，能够将WriteBatch的职责和MemTable的职责做一个很好的区分。</p>
+<p>在正式进入迭代方法之前，先来看下此时一个的WriteBatch 数据结构。这里就不贴全部的源码了，只是说下WriteBatch里面主要是一个Slice的key和Slice 的value。这些值最后都会被挡在一个string类型名为rep_参数中。</p>
+<p>每次写入都会将当前操作类型即ValueType放入到req中，写入之后的seq为：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">如果是kTypeValue则数据是 [seq预留<span class="number">8</span>字节，全部为<span class="number">0</span>][count][kTypeValue(<span class="number">1</span>字节)][key_length][key_value][value_length][value_value]</span><br><span class="line">如果是kTypeDeletion 则数据为[seq预留<span class="number">8</span>字节，全部为<span class="number">0</span>][count][kTypeDeletion(<span class="number">1</span>字节)][key_length][key_value]</span><br></pre></td></tr></table></figure>
+
+<p>然后在BuildBatchGroup 中也只是对这个值进行一个追加，最后是一个大的WriteBatch，包含了n个写入，这个在WriteBatch 中是一个append，每次都会将需要append的数据截取12字节后面的数据，然后将count重新设置到被append的count中。执行完BuildBatchGroup 后，就会在前面的4个字节中写入sequence。</p>
+<p>结合Log来看，这里的key，value的值都是使用的Varint32位，这也是为什么需要在Log中写入Fragement的原因了。</p>
+<p>了解到了WriteBatch 的数据结构就不在去看WriteBatch::Iterate里面的源码里，其实就是根据数据结果解析为key和value，然后分为delete方法或者Put方法。但是需要注意的是，WriteBatch::Iterate的里面的Put方法最后走到了<code>class MemTableInserter : public WriteBatch::Handler </code>这个类里面的Put方法里。这个方法会对核心就是对当前批次写入的sequence进行解析和插入到MemTable中，说明虽然我们合并了数据的写入，但是在写入Mem中的时候sequence 还是按照写入顺序+1 的。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">Put</span><span class="params">(<span class="type">const</span> Slice&amp; key, <span class="type">const</span> Slice&amp; value)</span> override &#123;</span><br><span class="line">  mem_-&gt;Add(sequence_, kTypeValue, key, value);</span><br><span class="line">  sequence_++;</span><br><span class="line">&#125;</span><br><span class="line"><span class="type">void</span> <span class="title function_">Delete</span><span class="params">(<span class="type">const</span> Slice&amp; key)</span> override &#123;</span><br><span class="line">  mem_-&gt;Add(sequence_, kTypeDeletion, key, Slice());</span><br><span class="line">  sequence_++;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>LevelDB里面的迭代器目前已经了解了两个了，一个是MemTable中的Iterator，用来查询数据，还有一个就是当前的写入了，其实迭代器在LevelDB中使用比较多，后面全部过一遍再回头来看迭代器的使用。</p>
+<h3 id="Add-方法"><a href="#Add-方法" class="headerlink" title="Add 方法"></a>Add 方法</h3><p>看到这里，终于开始往MemTable 写数据了。具体实现比较简单，主要就是Key值的创建也就是SkipList中Node 的创建。具体代码实现在<code>db/mem_table.cc</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">MemTable::Add</span><span class="params">(SequenceNumber s, ValueType type, <span class="type">const</span> Slice&amp; key,</span></span><br><span class="line"><span class="params">                   <span class="type">const</span> Slice&amp; value)</span> &#123;</span><br><span class="line">  <span class="comment">// Format of an entry is concatenation of:</span></span><br><span class="line">  <span class="comment">//  key_size     : varint32 of internal_key.size()</span></span><br><span class="line">  <span class="comment">//  key bytes    : char[internal_key.size()]</span></span><br><span class="line">  <span class="comment">//  tag          : uint64((sequence &lt;&lt; 8) | type) // 将type 放在seq后面</span></span><br><span class="line">  <span class="comment">//  value_size   : varint32 of value.size()</span></span><br><span class="line">  <span class="comment">//  value bytes  : char[value.size()]</span></span><br><span class="line">  <span class="type">size_t</span> key_size = key.size();</span><br><span class="line">  <span class="type">size_t</span> val_size = value.size();</span><br><span class="line">  <span class="type">size_t</span> internal_key_size = key_size + <span class="number">8</span>;</span><br><span class="line">  <span class="type">const</span> <span class="type">size_t</span> encoded_len = VarintLength(internal_key_size) +</span><br><span class="line">                             internal_key_size + VarintLength(val_size) +</span><br><span class="line">                             val_size;</span><br><span class="line">  <span class="type">char</span>* buf = arena_.Allocate(encoded_len); <span class="comment">//创建当前encode 后的数据大小的内存，ie：指向0x8060f8</span></span><br><span class="line">  <span class="type">char</span>* p = EncodeVarint32(buf, internal_key_size);<span class="comment">// 将internal_key_size的值放入到buf中，返回指向 //0x8060f9</span></span><br><span class="line">  <span class="built_in">std</span>::<span class="built_in">memcpy</span>(p, key.data(), key_size);<span class="comment">// 将key的值放入到p指针</span></span><br><span class="line">  p += key_size; <span class="comment">//因为key的值有6个</span></span><br><span class="line">  EncodeFixed64(p, (s &lt;&lt; <span class="number">8</span>) | type);</span><br><span class="line">  p += <span class="number">8</span>; <span class="comment">//0x8060ff 仍然指向</span></span><br><span class="line">  p = EncodeVarint32(p, val_size);<span class="comment">//0x806107</span></span><br><span class="line">  <span class="built_in">std</span>::<span class="built_in">memcpy</span>(p, value.data(), val_size);</span><br><span class="line">  assert(p + val_size == buf + encoded_len);</span><br><span class="line"><span class="comment">//  for (size_t i = 0; i &lt; encoded_len; ++i) &#123;</span></span><br><span class="line"><span class="comment">//    unsigned char c = static_cast&lt;unsigned char&gt;(buf[i]);</span></span><br><span class="line"><span class="comment">//    std::bitset&lt;8&gt; binary(c); // 将字符转换为 8 位二进制</span></span><br><span class="line"><span class="comment">//    std::cout &lt;&lt; &quot;Character: &quot; &lt;&lt; buf[i] &lt;&lt; &quot;  Binary: &quot; &lt;&lt; binary &lt;&lt; std::endl;</span></span><br><span class="line"><span class="comment">//  &#125;</span></span><br><span class="line">  table_.Insert(buf);</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>ValueType的值就是上面提到的MemTableInserter  中put或者delete来传入的。</p>
+<p>然后就是写入MemTable的Key的的构建了，最后构建的结果如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[internal_key_size_length Varint64][key_length][key_value][tag[sequence&lt;&lt;<span class="number">8</span>|type] <span class="number">8</span>字节][value_length][value_value]</span><br></pre></td></tr></table></figure>
+
+<p><img src="http://image.mingyouxiaozhu.top/blog/memTable_innerkey1.png" alt="memTable_innerkey1"></p>
+<p>然后就是开辟内存空间，传入的参数为上面的所有值长度之和：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">inline</span> <span class="type">char</span>* <span class="title function_">Arena::Allocate</span><span class="params">(<span class="type">size_t</span> bytes)</span> &#123;</span><br><span class="line">  <span class="comment">// The semantics of what to return are a bit messy if we allow</span></span><br><span class="line">  <span class="comment">// 0-byte allocations, so we disallow them here (we don&#x27;t need</span></span><br><span class="line">  <span class="comment">// them for our internal use).</span></span><br><span class="line">  assert(bytes &gt; <span class="number">0</span>);</span><br><span class="line">  <span class="comment">// 如果当前的内存小于剩下的内存，则直接在剩下的内存中进行分配</span></span><br><span class="line">  <span class="keyword">if</span> (bytes &lt;= alloc_bytes_remaining_) &#123;</span><br><span class="line">    <span class="type">char</span>* result = alloc_ptr_;</span><br><span class="line">    alloc_ptr_ += bytes;</span><br><span class="line">    alloc_bytes_remaining_ -= bytes;</span><br><span class="line">    <span class="keyword">return</span> result;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> AllocateFallback(bytes);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>如果上次开辟的空间未使用大于本次使用的空间，直接使用，否则就新创建空间：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">char</span>* <span class="title function_">Arena::AllocateFallback</span><span class="params">(<span class="type">size_t</span> bytes)</span> &#123;</span><br><span class="line">  <span class="comment">// 当前的额分配的是否大于1k，如果大于1k直接开通当前的数量</span></span><br><span class="line">  <span class="keyword">if</span> (bytes &gt; kBlockSize / <span class="number">4</span>) &#123;</span><br><span class="line">    <span class="comment">// Object is more than a quarter of our block size.  Allocate it separately</span></span><br><span class="line">    <span class="comment">// to avoid wasting too much space in leftover bytes.</span></span><br><span class="line">    <span class="type">char</span>* result = AllocateNewBlock(bytes);</span><br><span class="line">    <span class="keyword">return</span> result;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="comment">// 如果超过1k，创建4k的内存</span></span><br><span class="line">  <span class="comment">// We waste the remaining space in the current block.</span></span><br><span class="line">  alloc_ptr_ = AllocateNewBlock(kBlockSize);</span><br><span class="line">  alloc_bytes_remaining_ = kBlockSize;</span><br><span class="line"></span><br><span class="line">  <span class="type">char</span>* result = alloc_ptr_;</span><br><span class="line">  alloc_ptr_ += bytes;</span><br><span class="line">  alloc_bytes_remaining_ -= bytes;</span><br><span class="line">  <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>在Log中提到，每次读取都是4kb，所以这里每一个Block也是4kb。仅仅分为两种情况，超过1kb的直接分配需要的内存数，否则直接分配4kb，具体的内存分配在AllocateNewBlock：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 将创建的内存方在blocks_的链表中，然后给memory_usage_ 的值添加一下</span></span><br><span class="line"><span class="comment">//memory_usage_  记录的就是当前memtable 使用的内存大小，如果超过配置的最大缓存值，会将内存数据写入到磁盘上</span></span><br><span class="line"><span class="comment">// 内存分配就是很简单的创建一个char数组，然后push到队列中。</span></span><br><span class="line"><span class="type">char</span>* <span class="title function_">Arena::AllocateNewBlock</span><span class="params">(<span class="type">size_t</span> block_bytes)</span> &#123;</span><br><span class="line">  <span class="type">char</span>* result = new <span class="type">char</span>[block_bytes];</span><br><span class="line">  blocks_.push_back(result);</span><br><span class="line">  memory_usage_.fetch_add(block_bytes + <span class="keyword">sizeof</span>(<span class="type">char</span>*),</span><br><span class="line">                          <span class="built_in">std</span>::memory_order_relaxed);</span><br><span class="line">  <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到内存分配非常简单，就是将分配一个char数组，然后放入到blocks的vector里面。为什么可以这么简单的管理呢？这个和Area的生命周期相关，因为一个MemTable包含了一个Area独占的对象，当前MemTable如果释放了空间，说明当前的MemTable没有被其他人引用，而且已经写入到level0的sstable里了，所以area里面的空间可以直接释放。因为不会有人正在访问该空间了。</p>
+<p>分配完成以后，就直接写入到SkiptList里面，MemTable的传入的Comparator 也就是MemTable使用的Comparator了。</p>
+<h2 id="Get"><a href="#Get" class="headerlink" title="Get"></a>Get</h2><p>首先还是看<code>db/db_impl.cc</code>中的Get方法,实现如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line">Status <span class="title function_">DBImpl::Get</span><span class="params">(<span class="type">const</span> ReadOptions&amp; options, <span class="type">const</span> Slice&amp; key,</span></span><br><span class="line"><span class="params">                   <span class="built_in">std</span>::<span class="built_in">string</span>* value)</span> &#123;</span><br><span class="line">  Status s;</span><br><span class="line">  MutexLock <span class="title function_">l</span><span class="params">(&amp;mutex_)</span>; <span class="comment">// 加锁，这里加锁的主要原因是需要获取当前的全局变量versions_，然后获取到sequence的值</span></span><br><span class="line">  SequenceNumber snapshot;</span><br><span class="line">  <span class="keyword">if</span> (options.snapshot != nullptr) &#123;</span><br><span class="line">    snapshot =</span><br><span class="line">        static_cast&lt;<span class="type">const</span> SnapshotImpl*&gt;(options.snapshot)-&gt;sequence_number();</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    snapshot = versions_-&gt;LastSequence();</span><br><span class="line">  &#125;</span><br><span class="line"> </span><br><span class="line">  MemTable* mem = mem_; <span class="comment">// 当前正在写的Memtable</span></span><br><span class="line">  MemTable* imm = imm_;<span class="comment">// 准备收入level0的MemTable，只读MemTable</span></span><br><span class="line">  Version* current = versions_-&gt;current(); <span class="comment">//当前的version对象</span></span><br><span class="line">  mem-&gt;Ref(); <span class="comment">// 给mem 新增一个引用，避免读取过程中该mem被回收</span></span><br><span class="line">  <span class="keyword">if</span> (imm != nullptr) imm-&gt;Ref();<span class="comment">// 给imm 新增一个引用，</span></span><br><span class="line">  current-&gt;Ref(); <span class="comment">// version也增加引用</span></span><br><span class="line"></span><br><span class="line">  <span class="type">bool</span> have_stat_update = <span class="literal">false</span>;</span><br><span class="line">  Version::GetStats stats;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Unlock while reading from files and memtables</span></span><br><span class="line">  &#123;</span><br><span class="line">    mutex_.Unlock(); <span class="comment">// 释放锁，因为当前影响读取的version 或者sequence已经获取到了，所以不在会访问这些全局变量，而且mem和mem_也不会被回收。这里留下个问题，如果说当前读取操作的时候，mem和imm 都满了，等着写，那么岂不是也要等待数据读完？个人觉得是不会的，因为Imm已经在此处变成了本地变量，所以如果合并的时候已经被清理，那么是否回收这个imm的对象就交给了当前查询过程中的这个方法，即变成了栈空间对象的回收</span></span><br><span class="line">    <span class="comment">// First look in the memtable, then in the immutable memtable (if any).</span></span><br><span class="line">    LookupKey <span class="title function_">lkey</span><span class="params">(key, snapshot)</span>;<span class="comment">// 创建查看的key，</span></span><br><span class="line">    <span class="keyword">if</span> (mem-&gt;Get(lkey, value, &amp;s)) &#123; </span><br><span class="line">      <span class="comment">// Done</span></span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (imm != nullptr &amp;&amp; imm-&gt;Get(lkey, value, &amp;s)) &#123;</span><br><span class="line">      <span class="comment">// Done</span></span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      s = current-&gt;Get(options, lkey, value, &amp;stats);</span><br><span class="line">      have_stat_update = <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    mutex_.Lock();</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">if</span> (have_stat_update &amp;&amp; current-&gt;UpdateStats(stats)) &#123;</span><br><span class="line">    MaybeScheduleCompaction();</span><br><span class="line">  &#125;</span><br><span class="line">  mem-&gt;Unref();</span><br><span class="line">  <span class="keyword">if</span> (imm != nullptr) imm-&gt;Unref();</span><br><span class="line">  current-&gt;Unref();</span><br><span class="line">  <span class="keyword">return</span> s;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这个LookupKey 核心实现就是组装当前查的值</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[key_length][user_key][tag]</span><br></pre></td></tr></table></figure>
+
+<p><img src="http://image.mingyouxiaozhu.top/blog/memP_lookUpkey.png" alt="memP_lookUpkey"></p>
+<p>总的来说还是通过internal_key 查找，所以查找的比较器就比较重要，这里来看下实现：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">InternalKeyComparator::Compare</span><span class="params">(<span class="type">const</span> Slice&amp; akey, <span class="type">const</span> Slice&amp; bkey)</span> <span class="type">const</span> &#123;</span><br><span class="line">  <span class="comment">// Order by:</span></span><br><span class="line">  <span class="comment">//    increasing user key (according to user-supplied comparator)</span></span><br><span class="line">  <span class="comment">//    decreasing sequence number</span></span><br><span class="line">  <span class="comment">//    decreasing type (though sequence# should be enough to disambiguate)</span></span><br><span class="line">  <span class="type">int</span> r = user_comparator_-&gt;Compare(ExtractUserKey(akey), ExtractUserKey(bkey));</span><br><span class="line">  <span class="keyword">if</span> (r == <span class="number">0</span>) &#123;</span><br><span class="line">    <span class="type">const</span> <span class="type">uint64_t</span> anum = DecodeFixed64(akey.data() + akey.size() - <span class="number">8</span>);</span><br><span class="line">    <span class="type">const</span> <span class="type">uint64_t</span> bnum = DecodeFixed64(bkey.data() + bkey.size() - <span class="number">8</span>);</span><br><span class="line">    <span class="keyword">if</span> (anum &gt; bnum) &#123;</span><br><span class="line">      r = <span class="number">-1</span>;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (anum &lt; bnum) &#123;</span><br><span class="line">      r = +<span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> r;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>按照key的值和sequence的值进行比较，都是使用uint64_t比较的，因为sequence取的是后24位，所以大小比较key有效过滤key值相等不同seq的值。</p>
+<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>本文介绍了MemTable的实现，还包含了具体的写入过程中的锁。LevelDB对锁的处理，内存的处理是十分指的学习的。但是每次都将Value的值也一起放入到内存，写入到SkipList里，个人觉得对大对象的存储和查询造成了很多内存上的浪费和使用。是否可以考虑存储计算分离，将Value的值和Key值分开，然后不断修改Key中的Value的offset就行了。有个初步的设想，首先Key记录的是Value的offset，磁盘或者内存，在合并的时候去查询，查到数据执行更新，比自己旧的数据可以进行删除和回收。</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2023/09/05/LevelDB%E4%B9%8BLog/" rel="prev" title="LevelDB之Log">
+                  <i class="fa fa-chevron-left"></i> LevelDB之Log
+                </a>
+            </div>
+            <div class="post-nav-item">
+                <a href="/2023/09/06/LevelDB%E4%B9%8BMemTable-1/" rel="next" title="LevelDB之MemTable">
+                  LevelDB之MemTable <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2023</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">mingyouxiaozhu</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>

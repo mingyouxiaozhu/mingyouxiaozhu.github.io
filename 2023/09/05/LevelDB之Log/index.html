@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width">
+<meta name="theme-color" content="#222"><meta name="generator" content="Hexo 6.3.0">
+
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha256-HtsXJanqjKTc8vVQjO4YMhiqFoXkfBsjBWcX91T1jr8=" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/3.1.1/animate.min.css" integrity="sha256-PR7ttpcvz8qrF57fur/yAx1qXMFJeJFiA6pSzWi0OIE=" crossorigin="anonymous">
+
+<script class="next-config" data-name="main" type="application/json">{"hostname":"example.com","root":"/","images":"/images","scheme":"Muse","darkmode":false,"version":"8.17.1","exturl":false,"sidebar":{"position":"left","display":"post","padding":18,"offset":12},"copycode":{"enable":false,"style":null},"bookmark":{"enable":false,"color":"#222","save":"auto"},"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"stickytabs":false,"motion":{"enable":true,"async":false,"transition":{"menu_item":"fadeInDown","post_block":"fadeIn","post_header":"fadeInDown","post_body":"fadeInDown","coll_header":"fadeInLeft","sidebar":"fadeInUp"}},"prism":false,"i18n":{"placeholder":"搜索...","empty":"没有找到任何搜索结果：${query}","hits_time":"找到 ${hits} 个搜索结果（用时 ${time} 毫秒）","hits":"找到 ${hits} 个搜索结果"}}</script><script src="/js/config.js"></script>
+
+    <meta name="description" content="前言在上一篇的文章中，将 LevelDB 的架构做了一个简单的介绍。分析了需要的各个模块，后文将针对各个模块做一个更加详细的介绍。在介绍的过程中，希望能够了解到为什么这么做。 LOG作用Log 本身就是一个 WAL 日志，将每次写入的改变数据的操作首先持久化到文件，因为数据是顺序写入的所以写入性能高。又因为是每次首先都记录在 WAL 日志中然后进行具体的操作，所以根据 WAL 日志能够在系统意外崩">
+<meta property="og:type" content="article">
+<meta property="og:title" content="LevelDB之Log">
+<meta property="og:url" content="http://example.com/2023/09/05/LevelDB%E4%B9%8BLog/index.html">
+<meta property="og:site_name" content="mingyouxiaozhu&#39;s blog">
+<meta property="og:description" content="前言在上一篇的文章中，将 LevelDB 的架构做了一个简单的介绍。分析了需要的各个模块，后文将针对各个模块做一个更加详细的介绍。在介绍的过程中，希望能够了解到为什么这么做。 LOG作用Log 本身就是一个 WAL 日志，将每次写入的改变数据的操作首先持久化到文件，因为数据是顺序写入的所以写入性能高。又因为是每次首先都记录在 WAL 日志中然后进行具体的操作，所以根据 WAL 日志能够在系统意外崩">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/LevelDB%E4%B9%8BLog.assets/log_file_format-1693898015414.png">
+<meta property="article:published_time" content="2023-09-05T01:52:57.000Z">
+<meta property="article:modified_time" content="2023-09-05T11:10:11.890Z">
+<meta property="article:author" content="mingyouxiaozhu">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/LevelDB%E4%B9%8BLog.assets/log_file_format-1693898015414.png">
+
+
+<link rel="canonical" href="http://example.com/2023/09/05/LevelDB%E4%B9%8BLog/">
+
+
+
+<script class="next-config" data-name="page" type="application/json">{"sidebar":"","isHome":false,"isPost":true,"lang":"zh-CN","comments":true,"permalink":"http://example.com/2023/09/05/LevelDB%E4%B9%8BLog/","path":"2023/09/05/LevelDB之Log/","title":"LevelDB之Log"}</script>
+
+<script class="next-config" data-name="calendar" type="application/json">""</script>
+<title>LevelDB之Log | mingyouxiaozhu's blog</title>
+  
+
+
+
+
+
+
+
+
+  <noscript>
+    <link rel="stylesheet" href="/css/noscript.css">
+  </noscript>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" class="use-motion">
+  <div class="headband"></div>
+
+  <main class="main">
+    <div class="column">
+      <header class="header" itemscope itemtype="http://schema.org/WPHeader"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏" role="button">
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <i class="logo-line"></i>
+      <p class="site-title">mingyouxiaozhu's blog</p>
+      <i class="logo-line"></i>
+    </a>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger" aria-label="搜索" role="button">
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
+
+</header>
+        
+  
+  <aside class="sidebar">
+
+    <div class="sidebar-inner sidebar-nav-active sidebar-toc-active">
+      <ul class="sidebar-nav">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <div class="sidebar-panel-container">
+        <!--noindex-->
+        <div class="post-toc-wrap sidebar-panel">
+            <div class="post-toc animated"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">前言</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#LOG"><span class="nav-number">2.</span> <span class="nav-text">LOG</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BD%9C%E7%94%A8"><span class="nav-number">2.1.</span> <span class="nav-text">作用</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E7%8E%B0"><span class="nav-number">2.2.</span> <span class="nav-text">实现</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B7%E4%BD%93%E5%AE%9E%E7%8E%B0%E4%BD%8D%E7%BD%AE"><span class="nav-number">2.2.1.</span> <span class="nav-text">具体实现位置</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E5%B0%81%E8%A3%85"><span class="nav-number">2.2.2.</span> <span class="nav-text">数据封装</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%86%99%E6%93%8D%E4%BD%9C"><span class="nav-number">2.2.3.</span> <span class="nav-text">写操作</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Writer"><span class="nav-number">2.2.3.1.</span> <span class="nav-text">Writer</span></a><ol class="nav-child"><li class="nav-item nav-level-5"><a class="nav-link" href="#AddRecord"><span class="nav-number">2.2.3.1.1.</span> <span class="nav-text">AddRecord</span></a></li><li class="nav-item nav-level-5"><a class="nav-link" href="#EmitPhysicalRecord"><span class="nav-number">2.2.3.1.2.</span> <span class="nav-text">EmitPhysicalRecord</span></a></li></ol></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%AF%BB%E6%93%8D%E4%BD%9C"><span class="nav-number">2.2.4.</span> <span class="nav-text">读操作</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#Reader"><span class="nav-number">2.2.4.1.</span> <span class="nav-text">Reader</span></a></li></ol></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Log-%E5%9B%9E%E6%94%B6%E5%92%8C%E6%88%AA%E6%96%AD"><span class="nav-number">2.3.</span> <span class="nav-text">Log 回收和截断</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">3.</span> <span class="nav-text">总结</span></a></li></ol></div>
+        </div>
+        <!--/noindex-->
+
+        <div class="site-overview-wrap sidebar-panel">
+          <div class="site-author animated" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">mingyouxiaozhu</p>
+  <div class="site-description" itemprop="description">enjoy life ,enjoy coding</div>
+</div>
+<div class="site-state-wrap animated">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+        <a href="/archives/">
+          <span class="site-state-item-count">18</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+      <div class="site-state-item site-state-tags">
+        <span class="site-state-item-count">5</span>
+        <span class="site-state-item-name">标签</span>
+      </div>
+  </nav>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    
+  </aside>
+
+
+    </div>
+
+    <div class="main-inner post posts-expand">
+
+
+  
+
+
+<div class="post-block">
+  
+  
+
+  <article itemscope itemtype="http://schema.org/Article" class="post-content" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2023/09/05/LevelDB%E4%B9%8BLog/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="mingyouxiaozhu">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="mingyouxiaozhu's blog">
+      <meta itemprop="description" content="enjoy life ,enjoy coding">
+    </span>
+
+    <span hidden itemprop="post" itemscope itemtype="http://schema.org/CreativeWork">
+      <meta itemprop="name" content="LevelDB之Log | mingyouxiaozhu's blog">
+      <meta itemprop="description" content="">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          LevelDB之Log
+        </h1>
+
+        <div class="post-meta-container">
+          <div class="post-meta">
+    <span class="post-meta-item">
+      <span class="post-meta-item-icon">
+        <i class="far fa-calendar"></i>
+      </span>
+      <span class="post-meta-item-text">发表于</span>
+      
+
+      <time title="创建时间：2023-09-05 09:52:57 / 修改时间：19:10:11" itemprop="dateCreated datePublished" datetime="2023-09-05T09:52:57+08:00">2023-09-05</time>
+    </span>
+
+  
+</div>
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody"><h1 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h1><p>在上一篇的文章中，将 LevelDB 的架构做了一个简单的介绍。分析了需要的各个模块，后文将针对各个模块做一个更加详细的介绍。在介绍的过程中，希望能够了解到为什么这么做。</p>
+<h1 id="LOG"><a href="#LOG" class="headerlink" title="LOG"></a>LOG</h1><h2 id="作用"><a href="#作用" class="headerlink" title="作用"></a>作用</h2><p>Log 本身就是一个 WAL 日志，将每次写入的改变数据的操作首先持久化到文件，因为数据是顺序写入的所以写入性能高。又因为是每次首先都记录在 WAL 日志中然后进行具体的操作，所以根据 WAL 日志能够在系统意外崩溃的情况下恢复到崩溃前的状态，不会出现客户端已经返回成功，但是数据丢失的情况。</p>
+<h2 id="实现"><a href="#实现" class="headerlink" title="实现"></a>实现</h2><h3 id="具体实现位置"><a href="#具体实现位置" class="headerlink" title="具体实现位置"></a>具体实现位置</h3><p>Log 涉及到的主要就是读写.<br>写操作就是 WAL 日志，顺序写入操作到磁盘，主要实现在：</p>
+<ul>
+<li>db&#x2F;log_writer.cc</li>
+<li>db&#x2F;log_writer.h</li>
+</ul>
+<p>读操作就是在系统重启后从 WAL 日志恢复，也是顺序读取。和 Writer 感觉就是队列一个，一个队头读，一个队尾写。主要实现在：</p>
+<ul>
+<li>db&#x2F;log_reader.cc</li>
+<li>db&#x2F;log_reader.h</li>
+</ul>
+<p>在写的过程中还涉及到日志的序列化和反序列化。这部分的实现是在：</p>
+<ul>
+<li>db&#x2F;log_format.h</li>
+</ul>
+<p>当然不同的操作系统对底层调用如文件读写是不一样的，LevelDB 使用了一个 env 来统一上层操作，然后不同环境在编译器自动实现。具体位置在：</p>
+<ul>
+<li>util&#x2F;env.cc</li>
+</ul>
+<p>在 env 中，包含了多个类。其中和文件相关的类有：</p>
+<ol>
+<li>SequentialFile 从一个文件顺序读</li>
+<li>RandomAccessFile 随机读取某个文件</li>
+<li>WritableFile 顺序写的文件，注意的是，在 env 中说明了，这个类需要提供一个 buffer，可以让小的 fragments 能够合并一起刷入磁盘</li>
+</ol>
+<blockquote>
+<p>上面提到的读写和序列化的三个都属于 log 的 namespce。<code>namespace</code> 是一种用于组织和管理命名空间的机制。命名空间是用来避免名称冲突（名称重复）的一种方式，尤其在大型项目中非常有用，以确保不同部分的代码可以使用相同的名称而不产生冲突。而且 namespace 是可以嵌套的。</p>
+<p>个人将它类比为 java 的 package</p>
+</blockquote>
+<h3 id="数据封装"><a href="#数据封装" class="headerlink" title="数据封装"></a>数据封装</h3><p>为了减少磁盘 IO，LevelDB 每次读取文件都会读取 4kb 的数据，具体实现后文会说。为了让一次性读取的数据读取到当前刚好能处理的数据，所以写入的过程中也针对 4kb 做了操作。这个 4Kb 大小的数据在 LevelDB 中称之为 Block，写入的数据或者读取的数据被称为 Record，但是并不是每次写入的数据都刚好等于 4Kb，所以针对这种情况，又将存储在 Block 中的数据切割成 Fagement。组织如下图所示：</p>
+<p><img src="/./LevelDB%E4%B9%8BLog.assets/log_file_format-1693898015414.png" alt="log_file_format"></p>
+<p>上图为 logfile 的里面数据的组织结果，一次写入称之为 Record，一个 Record 会被切分成一个或多个 fragement 中分布在一个或者多个 block 中，每次读取是一个 block，但是每次写入只是写入一个 fragement。</p>
+<h3 id="写操作"><a href="#写操作" class="headerlink" title="写操作"></a>写操作</h3><h4 id="Writer"><a href="#Writer" class="headerlink" title="Writer"></a>Writer</h4><p>LevelDB 会为每次写入封装一个 Writer 对象，这个对象定义在<code>db/log_writer.h</code></p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Writer</span> &#123;</span></span><br><span class="line"> public:</span><br><span class="line">  <span class="comment">// Create a writer that will append data to &quot;*dest&quot;.</span></span><br><span class="line">  <span class="comment">// &quot;*dest&quot; must be initially empty.</span></span><br><span class="line">  <span class="comment">// &quot;*dest&quot; must remain live while this Writer is in use.</span></span><br><span class="line">  explicit <span class="title function_">Writer</span><span class="params">(WritableFile* dest)</span>;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Create a writer that will append data to &quot;*dest&quot;.</span></span><br><span class="line">  <span class="comment">// &quot;*dest&quot; must have initial length &quot;dest_length&quot;.</span></span><br><span class="line">  <span class="comment">// &quot;*dest&quot; must remain live while this Writer is in use.</span></span><br><span class="line">  Writer(WritableFile* dest, <span class="type">uint64_t</span> dest_length);</span><br><span class="line"></span><br><span class="line">  Writer(<span class="type">const</span> Writer&amp;) = delete;</span><br><span class="line">  Writer&amp; operator=(<span class="type">const</span> Writer&amp;) = delete;</span><br><span class="line"></span><br><span class="line">  ~Writer();</span><br><span class="line"></span><br><span class="line">  Status <span class="title function_">AddRecord</span><span class="params">(<span class="type">const</span> Slice&amp; slice)</span>;</span><br><span class="line"></span><br><span class="line"> private:</span><br><span class="line">  Status <span class="title function_">EmitPhysicalRecord</span><span class="params">(RecordType type, <span class="type">const</span> <span class="type">char</span>* ptr, <span class="type">size_t</span> length)</span>;</span><br><span class="line"></span><br><span class="line">  WritableFile* dest_;</span><br><span class="line">  <span class="type">int</span> block_offset_;  <span class="comment">// Current offset in block</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// crc32c values for all supported record types.  These are</span></span><br><span class="line">  <span class="comment">// pre-computed to reduce the overhead of computing the crc of the</span></span><br><span class="line">  <span class="comment">// record type stored in the header.</span></span><br><span class="line">  <span class="type">uint32_t</span> type_crc_[kMaxRecordType + <span class="number">1</span>];</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>公有域：</p>
+<ul>
+<li>AddRecord 方法，用于外部写入 Slice</li>
+</ul>
+<p>私有域：</p>
+<ul>
+<li>EmitPhysicalRecord 用于写入磁盘</li>
+<li>dest_ env 中提供的一个写文件的封装，可以理解位一个已经打开的可以写入的文件</li>
+<li>block<em>offset</em> 当前 writer 写入的 block 位置</li>
+<li>type<em>crc</em> ，这个是一个数组，里面存储的是当前的 type 对应的 crc，因为 type 是一个常量，不需要每次都计算。</li>
+</ul>
+<h5 id="AddRecord"><a href="#AddRecord" class="headerlink" title="AddRecord"></a>AddRecord</h5><p>AddRecord 本身的实现主要就是对当前写入 Record 做切割成 Fragement，具体代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line">Status <span class="title function_">Writer::AddRecord</span><span class="params">(<span class="type">const</span> Slice&amp; slice)</span> &#123;</span><br><span class="line">  <span class="type">const</span> <span class="type">char</span>* ptr = slice.data();</span><br><span class="line">  <span class="type">size_t</span> left = slice.size();</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Fragment the record if necessary and emit it.  Note that if slice</span></span><br><span class="line">  <span class="comment">// is empty, we still want to iterate once to emit a single</span></span><br><span class="line">  <span class="comment">// zero-length record</span></span><br><span class="line">  Status s;</span><br><span class="line">  <span class="type">bool</span> begin = <span class="literal">true</span>;</span><br><span class="line">  <span class="keyword">do</span> &#123;</span><br><span class="line">    <span class="comment">//当前的block中的剩下的值</span></span><br><span class="line">    <span class="type">const</span> <span class="type">int</span> leftover = kBlockSize - block_offset_;</span><br><span class="line">    assert(leftover &gt;= <span class="number">0</span>);</span><br><span class="line">    <span class="comment">// 如果小于7 ，则全部填满为0</span></span><br><span class="line">    <span class="keyword">if</span> (leftover &lt; kHeaderSize) &#123;</span><br><span class="line">      <span class="comment">// Switch to a new block</span></span><br><span class="line">      <span class="keyword">if</span> (leftover &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// Fill the trailer (literal below relies on kHeaderSize being 7)</span></span><br><span class="line">        <span class="keyword">static_assert</span>(kHeaderSize == <span class="number">7</span>, <span class="string">&quot;&quot;</span>);</span><br><span class="line">        dest_-&gt;Append(Slice(<span class="string">&quot;\x00\x00\x00\x00\x00\x00&quot;</span>, leftover));</span><br><span class="line">      &#125;</span><br><span class="line">      block_offset_ = <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Invariant: we never leave &lt; kHeaderSize bytes in a block.</span></span><br><span class="line">    assert(kBlockSize - block_offset_ - kHeaderSize &gt;= <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">    <span class="type">const</span> <span class="type">size_t</span> avail = kBlockSize - block_offset_ - kHeaderSize;</span><br><span class="line">    <span class="comment">// 一个block中的每一个fragment的大小，left为本次写入过程中待写入的数量，avail为可以写入的长度</span></span><br><span class="line">    <span class="type">const</span> <span class="type">size_t</span> fragment_length = (left &lt; avail) ? left : avail;</span><br><span class="line">    RecordType type;</span><br><span class="line">    <span class="type">const</span> <span class="type">bool</span> end = (left == fragment_length); <span class="comment">// 如果当前待写入的数据量小于block可以使用的，则说明本次可以作为一个完整的写入</span></span><br><span class="line">    <span class="keyword">if</span> (begin &amp;&amp; end) &#123;</span><br><span class="line">      type = kFullType;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (begin) &#123; <span class="comment">// 如果第一次待写入的数据库大于可以使用的，则需要进行切段，并且标记</span></span><br><span class="line">      type = kFirstType;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (end) &#123; <span class="comment">// 再循环中，如果前面的写入都完成了，那么最后可能是写入一个完整的数据，并且将它标记为最后的fragment</span></span><br><span class="line">      type = kLastType;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123; <span class="comment">// 在循环中，写入第一个后，后面仍然不足够，则需要进行切分为多个，既然不是开始也不是最后，则是处于中间的数据量</span></span><br><span class="line">      type = kMiddleType;</span><br><span class="line">    &#125;</span><br><span class="line">    s = EmitPhysicalRecord(type, ptr, fragment_length);</span><br><span class="line">    ptr += fragment_length;</span><br><span class="line">    left -= fragment_length;</span><br><span class="line">    begin = <span class="literal">false</span>;</span><br><span class="line">  &#125; <span class="keyword">while</span> (s.ok() &amp;&amp; left &gt; <span class="number">0</span>);</span><br><span class="line">  <span class="keyword">return</span> s;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>上面代码中的 kBlockSize 初始值在<code>util/log_format.h</code>中的 kBlockSize,大小是 32768 字节也就是 32kb。block<em>offset</em>则是 writer 对象中写入成功后会更新的值。</p>
+<p>实现的流程核心分为以下判断：</p>
+<ol>
+<li>当前 block 中剩下的值是否不能写入一个 header 即 7 个字节，如果小于则直接填充 0，所以给实际数据写入的值为 avail，即等于 整个 blog 剩下的值减去 header 的 7 个字节</li>
+<li>如果当前的 block 的 avail 大小大于需要写入的数据，则当前 fragement 的长度就等于需要写入的长度，也就是一个 fullfragement，否则只能写入剩下可以写的大小</li>
+<li>判断当前的 fragement 的类型是通过 2 个参数确定的。<ol>
+<li>begin 在第一次进入方法时候为 true</li>
+<li>end 如果当前剩下的可写长度比 fragement 的长度长，则 end 为 true，否则为 false</li>
+<li>如果 end 和 begin 都为 true，则是一个 fragement，如果两者中只有一个为 true，则要么是最后一个，要么是第一个，两个都为 false，则说明是 kMiddleType。</li>
+</ol>
+</li>
+</ol>
+<p>确认好 type 后，也就确认了当前 fragement，也就是可以进行数据的持久化了，即调用了 EmitPhysicalRecord 方法：</p>
+<h5 id="EmitPhysicalRecord"><a href="#EmitPhysicalRecord" class="headerlink" title="EmitPhysicalRecord"></a>EmitPhysicalRecord</h5><p>EmitPhysicalRecord 方法具体实现如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">Status <span class="title function_">Writer::EmitPhysicalRecord</span><span class="params">(RecordType t, <span class="type">const</span> <span class="type">char</span>* ptr,</span></span><br><span class="line"><span class="params">                                  <span class="type">size_t</span> length)</span> &#123;</span><br><span class="line">  assert(length &lt;= <span class="number">0xffff</span>);  <span class="comment">// Must fit in two bytes</span></span><br><span class="line">  assert(block_offset_ + kHeaderSize + length &lt;= kBlockSize);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Format the header</span></span><br><span class="line">  <span class="type">char</span> buf[kHeaderSize];</span><br><span class="line">  buf[<span class="number">4</span>] = static_cast&lt;<span class="type">char</span>&gt;(length &amp; <span class="number">0xff</span>); <span class="comment">// 将长度的低8位放到第四个位置</span></span><br><span class="line">  buf[<span class="number">5</span>] = static_cast&lt;<span class="type">char</span>&gt;(length &gt;&gt; <span class="number">8</span>); <span class="comment">//  char是一个字节，所以这里也是一个字节。可以看到是小端数组，低八位放在前面，然后最多两个字节表示带下，最多一次性写入16k的数据</span></span><br><span class="line">  buf[<span class="number">6</span>] = static_cast&lt;<span class="type">char</span>&gt;(t); <span class="comment">// 当前fragment的类型放在6 这个位置</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// Compute the crc of the record type and the payload.</span></span><br><span class="line">  <span class="type">uint32_t</span> crc = crc32c::Extend(type_crc_[t], ptr, length);</span><br><span class="line">  crc = crc32c::Mask(crc);  <span class="comment">// Adjust for storage</span></span><br><span class="line">  EncodeFixed32(buf, crc);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Write the header and the payload</span></span><br><span class="line">  Status s = dest_-&gt;Append(Slice(buf, kHeaderSize));</span><br><span class="line">  <span class="keyword">if</span> (s.ok()) &#123;</span><br><span class="line">    s = dest_-&gt;Append(Slice(ptr, length));</span><br><span class="line">    <span class="keyword">if</span> (s.ok()) &#123;</span><br><span class="line">      s = dest_-&gt;Flush();</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  block_offset_ += kHeaderSize + length;</span><br><span class="line">  <span class="keyword">return</span> s;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>首先是拼接头节点，这里不是从头到尾来做的，而是首先将长度和 type 放入，具体的数据结构可以看上面的图中的 fragement 里面的头节点类容：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">buff[6] = char[6]&#123;crc_low,crc_mid0,crc_mid2,crc_high,length_low,length_high,type&#125;</span><br></pre></td></tr></table></figure>
+
+<p>和 Varint 类似，甚至前面 4 个 crc 就是使用的 EncodeFixed32，固定长度的 char 表示 32 位整型。都是小端存储。</p>
+<p>封装好 header 后，首先将 header 的数据 append 到 dest_ 中，成功后 append 数据，append 成功后会调用 flush，将本次的 record 刷入到磁盘上。</p>
+<p>整个写流程就完成了，此时 Log 中已经包含了本次写入的 Record。</p>
+<h3 id="读操作"><a href="#读操作" class="headerlink" title="读操作"></a>读操作</h3><p>前文提到，每次写入都会将 Record 写入到磁盘上作为 WAL 日志，WAL 日志的读取只有一个地方会做，就是数据库重启后的恢复动作。但是数据库的恢复动作除了读取 Record 还涉及到很多其他的如版本等的操作。读操作的篇幅里都不会涉及，在后面了 version 的时候会详细说下，所以本文仅仅涉及到读 Record 的操作。</p>
+<h4 id="Reader"><a href="#Reader" class="headerlink" title="Reader"></a>Reader</h4><p>和 Writer 类型，LevelDB 会为每次读取都提供一个 Reader 的对象，实现位置在<code>db/log_reader.h</code>中。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Reader</span> &#123;</span></span><br><span class="line"> public:</span><br><span class="line">  <span class="comment">// Interface for reporting errors.</span></span><br><span class="line">  <span class="class"><span class="keyword">class</span> <span class="title">Reporter</span> &#123;</span></span><br><span class="line">   public:</span><br><span class="line">    virtual ~Reporter();</span><br><span class="line">      <span class="comment">// 某些字节可能已经损坏，损坏的</span></span><br><span class="line">    virtual <span class="type">void</span> <span class="title function_">Corruption</span><span class="params">(<span class="type">size_t</span> bytes, <span class="type">const</span> Status&amp; status)</span> = <span class="number">0</span>;</span><br><span class="line">  &#125;;</span><br><span class="line"><span class="comment">// reader 传入的参数是一个SequentialFile，也就是一个顺序读取的对象</span></span><br><span class="line">  Reader(SequentialFile* file, Reporter* reporter, <span class="type">bool</span> checksum,</span><br><span class="line">         <span class="type">uint64_t</span> initial_offset);</span><br><span class="line">  Reader(<span class="type">const</span> Reader&amp;) = delete;</span><br><span class="line">  Reader&amp; operator=(<span class="type">const</span> Reader&amp;) = delete;</span><br><span class="line">  ~Reader();</span><br><span class="line"><span class="comment">// 将当前Record的数据读取到record里面，读取成功则返回true，如果已经读取到本次输入的尾部，则返回false，并且将数据临时存储在scratch 中</span></span><br><span class="line">  <span class="comment">// Read the next record into *record.  Returns true if read</span></span><br><span class="line">  <span class="comment">// successfully, false if we hit end of the input.  May use</span></span><br><span class="line">  <span class="comment">// &quot;*scratch&quot; as temporary storage.  The contents filled in *record</span></span><br><span class="line">  <span class="comment">// will only be valid until the next mutating operation on this</span></span><br><span class="line">  <span class="comment">// reader or the next mutation to *scratch.</span></span><br><span class="line">  <span class="type">bool</span> <span class="title function_">ReadRecord</span><span class="params">(Slice* record, <span class="built_in">std</span>::<span class="built_in">string</span>* scratch)</span>;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Returns the physical offset of the last record returned by ReadRecord.</span></span><br><span class="line">  <span class="comment">//</span></span><br><span class="line">  <span class="comment">// Undefined before the first call to ReadRecord.</span></span><br><span class="line">  <span class="type">uint64_t</span> <span class="title function_">LastRecordOffset</span><span class="params">()</span>;</span><br><span class="line"> private:</span><br><span class="line">    <span class="comment">// 有删减</span></span><br><span class="line">  SequentialFile* <span class="type">const</span> file_;</span><br><span class="line">  Reporter* <span class="type">const</span> reporter_;</span><br><span class="line">  <span class="type">bool</span> <span class="type">const</span> checksum_;</span><br><span class="line">  <span class="type">char</span>* <span class="type">const</span> backing_store_;</span><br><span class="line">  Slice buffer_;</span><br><span class="line">  <span class="type">bool</span> eof_;  <span class="comment">// Last Read() indicated EOF by returning &lt; kBlockSize</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// Offset of the last record returned by ReadRecord.</span></span><br><span class="line">  <span class="type">uint64_t</span> last_record_offset_;</span><br><span class="line">  <span class="comment">// Offset of the first location past the end of buffer_.</span></span><br><span class="line">  <span class="type">uint64_t</span> end_of_buffer_offset_;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// Offset at which to start looking for the first record to return</span></span><br><span class="line">  <span class="type">uint64_t</span> <span class="type">const</span> initial_offset_;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>上文没有贴完整的代码，私有域中的方法和对象我没有完全贴。因为 Reader 方法本身只是将 Record 从 Log 中读取出来，当然其他如 MANIFEST 的文件其实也是按照 Record 来存储的。但是整体上来说，都是从文件中将 Record 的日志恢复，然后按照类型插入到 Memtable 或者 VersionSet 中。</p>
+<p>Log 日志恢复主要是在 RecoverLogFile 方法中位于<code>db/db_impl.cc</code>中。这个方法比较长，下文挑一些核心的实现：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">while</span> (reader.ReadRecord(&amp;record, &amp;scratch) &amp;&amp; status.ok()) &#123;</span><br><span class="line">  <span class="keyword">if</span> (record.size() &lt; <span class="number">12</span>) &#123;</span><br><span class="line">    reporter.Corruption(record.size(),</span><br><span class="line">                        Status::Corruption(<span class="string">&quot;log record too small&quot;</span>));</span><br><span class="line">    <span class="keyword">continue</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  WriteBatchInternal::SetContents(&amp;batch, record);</span><br><span class="line"></span><br><span class="line">  <span class="keyword">if</span> (mem == nullptr) &#123;</span><br><span class="line">    mem = new MemTable(internal_comparator_);</span><br><span class="line">    mem-&gt;Ref();</span><br><span class="line">  &#125;</span><br><span class="line">  status = WriteBatchInternal::InsertInto(&amp;batch, mem);</span><br><span class="line">  MaybeIgnoreError(&amp;status);</span><br><span class="line">  <span class="keyword">if</span> (!status.ok()) &#123;</span><br><span class="line">    <span class="keyword">break</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="type">const</span> SequenceNumber last_seq = WriteBatchInternal::Sequence(&amp;batch) +</span><br><span class="line">                                  WriteBatchInternal::Count(&amp;batch) - <span class="number">1</span>;</span><br><span class="line">  <span class="keyword">if</span> (last_seq &gt; *max_sequence) &#123;</span><br><span class="line">    *max_sequence = last_seq;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">if</span> (mem-&gt;ApproximateMemoryUsage() &gt; options_.write_buffer_size) &#123;</span><br><span class="line">    compactions++;</span><br><span class="line">    *save_manifest = <span class="literal">true</span>;</span><br><span class="line">    status = WriteLevel0Table(mem, edit, nullptr);</span><br><span class="line">    mem-&gt;Unref();</span><br><span class="line">    mem = nullptr;</span><br><span class="line">    <span class="keyword">if</span> (!status.ok()) &#123;</span><br><span class="line">      <span class="comment">// Reflect errors immediately so that conditions like full</span></span><br><span class="line">      <span class="comment">// file-systems cause the DB::Open() to fail.</span></span><br><span class="line">      <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>上面是从文件中读取 record 的实现，是一个循环读取的过程，上面的方法介绍里说过，reader.ReadRecord(&amp;record, &amp;scratch) 中的两个传入的参数分别为，如果是 fullFragement，则将值放在 record 中，如果是 first，mid 则放在 scratch 中，一直遇到 end 后放到 record 中。</p>
+<blockquote>
+<p>问题 a：是否存在比如当前有两个日志文件(000001.log,000002.log),然后 000001.log 中的末尾刚好是 000002.log 第一个 fragement 的 header 呢？</p>
+</blockquote>
+<p>在持续读取过程中，会将 Record 的数据写入到 memtable 中，如果发现 Memtable 的值超过了 4MB，则刷入 level0 层。</p>
+<p>循环执行完后，当前的 log 日志已经全部弄到内存中了。如果当前的<code>Options</code>中指定了使用原来的 log 文件，则无需将内存中的数据刷入磁盘，因为 log 文件在后续的写入中继续使用，则将当前恢复 memTable 复制给 mem 对象作为后续写入的 memtable，log 的回收可以走写入的流程过程中的日志文件回收策略，否则的话，仍然需要将当前的数据刷入 level0。因为可能在新写入的操作中，该日志文件被删除，到时候没有刷盘则丢失数据了。</p>
+<h2 id="Log-回收和截断"><a href="#Log-回收和截断" class="headerlink" title="Log 回收和截断"></a>Log 回收和截断</h2><p>Log 日志如果不做截断，数据量会持续堆积，越来越大。截断的时机是个比较重要的事件。看上面的 Recover 可以看出一些端倪。如果当前的 memTable 中的数据被刷入到了磁盘，成了 level0，那么就说明可以回收当前对应的 log 文件了。</p>
+<p>在<code>db/db_impl.cc</code>中有一个 CompactMemTable，该方法就是将 imm 的数据写入到 level0,然后在数据写入到 level0 的时候就将当前的 log 删除。那么是否可能存在误删除当前写入的数据呢？答案是不会的，因为合并的时候正在写的 log 文件已经变成了新的文件。还记得上面的问题 a 吗？这里得到了答案，就是不可能存在 header 的数据在一个文件，然后 data 的数据在另外一个文件的情况，只有可能出现文件刚好写完 header 系统就挂掉的情况。这种情况在 leveldb 中是作为异常处理的。</p>
+<p>日志的切换是在<code>db/db_impl.cc</code>中的 MakeRoomForWrite，当当前的资源不住，主要 i 是 mem 的资源不足的时候，就新建一个 log 文件作为本次写入的文件，然后将原来的文件 close，然后将当前 mem 修改为_mem。而且这个文件是递增命名的，所以根据名字就可以进行先后顺序排序，所以也不存在导致删除错误的情况，至于文件的组织后文在探讨 Version 的时候在讨论。</p>
+<h1 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h1><p>本文将前面的整体架构中的 Log 模块做了介绍，还涉及到了部分 Recover 的情况。在 LevelDB 中，数据基本上都是按照类似的方式不断的 append 的，所以基本上都是 Record 的方式加解密。这部分会在后面的 SSTable，Version 等中在遇到。</p>
+<p>个人觉得设计比较有美感的就是 Log 的截取和 fragement 的方式写入，阅读起来很顺畅。</p>
+
+    </div>
+
+    
+    
+    
+
+    <footer class="post-footer">
+
+        
+
+          <div class="post-nav">
+            <div class="post-nav-item">
+                <a href="/2023/09/04/LevelDB%E4%B9%8B%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84/" rel="prev" title="LevelDB之整体架构">
+                  <i class="fa fa-chevron-left"></i> LevelDB之整体架构
+                </a>
+            </div>
+            <div class="post-nav-item">
+                <a href="/2023/09/06/LevelDB%E4%B9%8BMemTable/" rel="next" title="LevelDB之MemTable">
+                  LevelDB之MemTable <i class="fa fa-chevron-right"></i>
+                </a>
+            </div>
+          </div>
+    </footer>
+  </article>
+</div>
+
+
+
+
+
+
+</div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+
+  <div class="copyright">
+    &copy; 
+    <span itemprop="copyrightYear">2023</span>
+    <span class="with-love">
+      <i class="fa fa-heart"></i>
+    </span>
+    <span class="author" itemprop="copyrightHolder">mingyouxiaozhu</span>
+  </div>
+  <div class="powered-by">由 <a href="https://hexo.io/" rel="noopener" target="_blank">Hexo</a> & <a href="https://theme-next.js.org/muse/" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+    </div>
+  </footer>
+
+  
+  <div class="toggle sidebar-toggle" role="button">
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+    <span class="toggle-line"></span>
+  </div>
+  <div class="sidebar-dimmer"></div>
+  <div class="back-to-top" role="button" aria-label="返回顶部">
+    <i class="fa fa-arrow-up fa-lg"></i>
+    <span>0%</span>
+  </div>
+
+<noscript>
+  <div class="noscript-warning">Theme NexT works best with JavaScript enabled</div>
+</noscript>
+
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js" integrity="sha256-XL2inqUJaslATFnHdJOi9GfQ60on8Wx1C2H8DYiN1xY=" crossorigin="anonymous"></script>
+<script src="/js/comments.js"></script><script src="/js/utils.js"></script><script src="/js/motion.js"></script><script src="/js/schemes/muse.js"></script><script src="/js/next-boot.js"></script>
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+</body>
+</html>
